@@ -6,50 +6,81 @@
 <title>dead_hall.exe</title>
 <style>
   html,body {
-    margin:0; padding:0; background:#0a0a0f; overflow:hidden; touch-action:none;
+    margin:0; padding:0; background:#050508; overflow:hidden; touch-action:none;
     display:flex; align-items:center; justify-content:center; height:100vh;
-    font-family: 'Courier New', Courier, monospace;
+    font-family:'Courier New', Courier, monospace; color:#e2e8f0;
   }
   #wrap {
     position:relative; width:100%; max-width:1024px; aspect-ratio:16/9;
-    box-shadow: 0 0 0 4px #1a1a24, 0 0 60px rgba(0,0,0,.8);
+    box-shadow: 0 0 0 3px #1a1a24, 0 0 60px rgba(0,0,0,.8);
     background:#000;
   }
   canvas {
     display:block; width:100%; height:100%;
     image-rendering:pixelated; image-rendering:crisp-edges;
   }
-  #crt {
+  #scan {
     position:absolute; inset:0; pointer-events:none;
-    background: repeating-linear-gradient(0deg, rgba(0,0,0,.18) 0px 2px, transparent 2px 4px);
-    mix-blend-mode: multiply;
+    background: repeating-linear-gradient(0deg, rgba(0,0,0,.22) 0px 3px, transparent 3px 6px);
     opacity:.35;
+    mix-blend-mode: multiply;
   }
 </style>
 </head>
 <body>
 <div id="wrap">
   <canvas id="c"></canvas>
-  <div id="crt"></div>
+  <div id="scan"></div>
 </div>
-<script>
-// === ENGINE SETUP ===
-const cv = document.getElementById('c');
-const ctx = cv.getContext('2d');
-ctx.imageSmoothingEnabled = false;
-const W=480, H=270, TILE=24;
-cv.width=W; cv.height=H;
 
-// === INPUT ===
-const keys={};
-const joy={on:0,dx:0,dy:0,id:-1};
-const btn={on:0,id:-1};
+<script>
+// ==============================================================
+// ENGINE
+// ==============================================================
+const cv = document.getElementById('c');
+const C = cv.getContext('2d');
+C.imageSmoothingEnabled = false;
+const W = 480, H = 270;
+cv.width = W; cv.height = H;
+
+const TILE = 16;
+const CAM_ZOOM = 1.8; // closer feel
+const FRICTION = 0.72;
+const ACCEL = 0.35;
+const WALK_SPD = 1.0;
+const RUN_SPD = 1.75;
+const STAM_MAX = 120;
+
+// ==============================================================
+// AUDIO (simple retro beep)
+// ==============================================================
+let ACtx = null;
+function beep(f=520, d=0.025, v=0.04, type='square'){
+  if(!ACtx) ACtx = new (window.AudioContext||window.webkitAudioContext)();
+  try {
+    const o = ACtx.createOscillator();
+    const g = ACtx.createGain();
+    o.type = type;
+    o.connect(g); g.connect(ACtx.destination);
+    o.frequency.setValueAtTime(f, ACtx.currentTime);
+    g.gain.setValueAtTime(v, ACtx.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.001, ACtx.currentTime+d);
+    o.start(); o.stop(ACtx.currentTime+d);
+  }catch(e){}
+}
+
+// ==============================================================
+// INPUT
+// ==============================================================
+const Keys = {};
+const Joy = {on:0,dx:0,dy:0,id:-1};
+const Btn = {a:0,b:0,aid:-1,bid:-1};
 
 window.addEventListener('keydown',e=>{
-  keys[e.code]=true;
-  if(['Space','Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+  Keys[e.code]=true;
+  if(['Space','Enter','ArrowUp','ArrowDown','ArrowLeft','ArrowRight','ShiftLeft','ShiftRight'].includes(e.code)) e.preventDefault();
 });
-window.addEventListener('keyup',e=>keys[e.code]=false);
+window.addEventListener('keyup',e=>Keys[e.code]=false);
 
 function getPos(t){
   const r=cv.getBoundingClientRect();
@@ -59,697 +90,837 @@ function getPos(t){
 cv.addEventListener('touchstart',e=>{
   for(let t of e.changedTouches){
     const p=getPos(t);
-    if(p.x<W/2){ joy.on=1; joy.id=t.identifier; joy.dx=joy.dy=0; }
-    else{ btn.on=1; btn.id=t.identifier; }
+    if(p.x<W/2){ Joy.on=1; Joy.id=t.identifier; Joy.dx=Joy.dy=0; }
+    else if(p.y>H-50){ Btn.b=1; Btn.bid=t.identifier; } // bottom right = run
+    else { Btn.a=1; Btn.aid=t.identifier; } // upper right = action
   }
 },{passive:false});
 window.addEventListener('touchmove',e=>{
   for(let t of e.changedTouches){
-    if(joy.on && t.identifier===joy.id){
-      const p=getPos(t); const dx=p.x-60, dy=p.y-210;
-      const d=Math.hypot(dx,dy);
-      if(d>18){ joy.dx=(dx/d)*18; joy.dy=(dy/d)*18; }
-      else{ joy.dx=dx; joy.dy=dy; }
+    if(Joy.on && t.identifier===Joy.id){
+      const p=getPos(t);
+      const dx=p.x-60, dy=p.y-210, d=Math.hypot(dx,dy);
+      if(d>18){ Joy.dx=(dx/d)*18; Joy.dy=(dy/d)*18; }
+      else{ Joy.dx=dx; Joy.dy=dy; }
     }
   }
 },{passive:false});
 window.addEventListener('touchend',e=>{
   for(let t of e.changedTouches){
-    if(joy.on && t.identifier===joy.id){ joy.on=0; joy.dx=joy.dy=0; }
-    if(btn.on && t.identifier===btn.id){ btn.on=0; }
+    if(Joy.on && t.identifier===Joy.id){ Joy.on=0; Joy.dx=Joy.dy=0; }
+    if(Btn.a && t.identifier===Btn.aid){ Btn.a=0; }
+    if(Btn.b && t.identifier===Btn.bid){ Btn.b=0; }
   }
 });
 
-function act(){ return keys.Space||keys.Enter||keys.KeyZ||btn.on; }
-let actPrev=false;
+function actDown(){ return Keys.Space||Keys.Enter||Keys.KeyZ||Btn.a; }
+function runDown(){ return Keys.ShiftLeft||Keys.ShiftRight||Btn.b; }
+let ActPrev=false;
 
-// === PALETTE (messy & human) ===
-const C={
-  bg:'#0f111a', wall:'#1a1c2e', wallHi:'#252840', wallLo:'#0d0f1a',
-  floor:'#141620', floorAlt:'#181b26', blood1:'#5c1a1a', blood2:'#3d0f0f',
-  player:'#5b8cff', skin:'#e2b29c', hair:'#3e2723', pants:'#1e2338',
-  npc1:'#67e8f9', npc2:'#86efac', stalker:'#1a0505', eye:'#ff3333',
-  fuse:'#fbbf24', note:'#f8fafc', gold:'#fcd34d', white:'#e2e8f0', gray:'#64748b'
+// ==============================================================
+// PALETTE & HELPERS
+// ==============================================================
+const P = {
+  bg:'#0c0c14', wall:'#1e1e2e', wallHi:'#2a2a3e', wallLo:'#11111c',
+  fl1:'#16161f', fl2:'#1a1a25', blood:'#5c1018', darkb:'#2e080c',
+  player:'#4f7cff', skin:'#e0aa90', hair:'#3d2314', pants:'#161d2b',
+  milo:'#67e8f9', janitor:'#86efac', stalker:'#1a0202', redeye:'#ff1a1a',
+  fuse:'#fbbf24', note:'#f1f5f9', gold:'#f59e0b', white:'#f8fafc',
+  gray:'#8892a0', black:'#050508', hp:'#ef4444'
 };
 
-// === MAPS ===
-// #:wall .:floor b:blood >:stairs d:door S:start
-const MAPS=[
+function rect(x,y,w,h,c){ C.fillStyle=c; C.fillRect(Math.floor(x),Math.floor(y),w,h); }
+function text(x,y,s,c,font='8px monospace'){
+  C.fillStyle=c; C.font=font; C.textBaseline='top'; C.fillText(s,x,y);
+}
+
+// ==============================================================
+// FACES (for dialog portraits)
+// ==============================================================
+function drawFace(type,x,y,sz=56){
+  const s=sz/56; C.save(); C.translate(x,y); C.scale(s,s);
+  rect(0,0,56,56,P.black); rect(2,2,52,52,P.wallLo); // bg
+  if(type==='milo'){
+    // hair
+    rect(8,4,40,16,P.milo); rect(4,10,8,10,P.milo); rect(44,10,8,10,P.milo);
+    // face
+    rect(12,16,32,34,P.skin);
+    // eyes
+    rect(16,24,8,8,P.white); rect(32,24,8,8,P.white);
+    rect(18,26,4,4,P.black); rect(34,26,4,4,P.black); // pupils
+    // blush
+    rect(14,34,6,3,'#fda4af'); rect(36,34,6,3,'#fda4af');
+    // smile
+    rect(22,40,12,2,P.black); rect(20,38,2,2,P.black); rect(34,38,2,2,P.black);
+  }else if(type==='janitor'){
+    // cap
+    rect(6,6,44,10,P.janitor); rect(10,2,36,6,'#14532d');
+    // face
+    rect(12,16,32,34,'#dcbfa3');
+    // beard
+    rect(10,40,36,10,'#583822');
+    // eyes (tired)
+    rect(16,26,8,2,P.black); rect(32,26,8,2,P.black);
+    // mouth hidden mostly
+    rect(24,38,8,2,'#3f1d0d');
+  }else if(type==='player'){
+    // hood
+    rect(8,6,40,14,P.player); rect(12,4,32,4,P.player);
+    // face
+    rect(14,18,28,30,P.skin);
+    // hair bangs
+    rect(10,12,36,8,P.hair);
+    // worried eyes
+    rect(18,26,6,2,P.black); rect(32,26,6,2,P.black);
+    // sweat
+    rect(38,22,3,3,P.milo);
+    // mouth small
+    rect(24,38,8,2,'#5c1a1a');
+  }else if(type==='stalker'){
+    rect(4,4,48,48,P.stalker);
+    rect(14,16,10,10,P.redeye); rect(32,16,10,10,P.redeye);
+    rect(18,20,4,4,P.white); rect(36,20,4,4,P.white); // glint
+    // creepy smile
+    rect(20,36,16,3,P.redeye); rect(18,34,4,2,P.redeye); rect(34,34,4,2,P.redeye);
+    // glitch lines
+    C.fillStyle='#fff'; C.globalAlpha=0.15; C.fillRect(0,16,56,2); C.fillRect(0,40,56,2); C.globalAlpha=1;
+  }else if(type==='null'){
+    rect(12,12,32,32,'#334155');
+    rect(18,20,4,4,P.gray); rect(34,20,4,4,P.gray);
+    rect(22,36,12,2,P.gray);
+  }
+  C.restore();
+}
+
+// ==============================================================
+// MAPS (bigger, detailed)
+// ==============================================================
+// legend: # wall  . floor  b blood  > stairs  d door  S start
+const MAPS = [
   { // 0 LOBBY
-    dark:0.6, light:120,
-    intro:"ugh... my head... where is this?",
+    dark:0.55, lightR:110,
+    intro:{who:'???', face:'player', t:'* where... am i?'},
     grid:[
-      "########################",
-      "#.......#..............#",
-      "#..N....#..............#",
-      "#.......#.....####.....#",
-      "#.......#.....#..#.....#",
-      "####.####..............#",
-      "#......................#",
-      "#.......T..............#",
-      "#......................#",
-      "#..............####....#",
-      "#..............#..#....#",
-      "#..............#..#....#",
-      "#####.##########..#....#",
-      "#..............#..#....#",
-      "#..............####....#",
-      "#....S.................#",
-      "#......................#",
-      "########################"
+      "####################################",
+      "#..................................#",
+      "#..N...............................#",
+      "#..................................#",
+      "#.........##############...........#",
+      "#.........#............#...........#",
+      "#.........#............#...........#",
+      "#.........#.....T......#...........#",
+      "#.........#............#...........#",
+      "#.........##############...........#",
+      "#..................................#",
+      "#..................................#",
+      "#.................d................#",
+      "#..................................#",
+      "#..................................#",
+      "#.........S........................#",
+      "#..................................#",
+      "####################################"
     ],
     ents:[
-      {id:'milo',type:'npc',tx:3,ty:2,face:1,lines:["oh!! hey!!","i've been stuck here for..","..i dont know how long.","my brother went east.","but the door needs a code.","mr mop guy knows something.."]},
-      {id:'note',type:'item',tx:7,ty:7,name:'Scribbled Note',color:C.note,msg:"the paper is soaked.. '1027' ..written in crayon?"},
-      {id:'east_door',type:'door',tx:13,ty:12,to:1,tox:1,toy:12,locked:true,code:'readNote',lockedMsg:"a keypad. ENTER 4 DIGITS..."}
+      {id:'milo',type:'npc',tx:3,ty:2,face:1,who:'MILO',f:'milo', lines:[
+        {t:"* a kid in a hoodie sits alone.",f:'milo'},
+        {t:"h-hey!! you look lost too.",f:'milo'},
+        {t:"my brother went through that door.",f:'milo'},
+        {t:"but its locked with a code...",f:'milo'},
+        {t:"mr. mop said its written on a note.",f:'milo'},
+        {t:"please find him okay?",f:'milo'}
+      ]},
+      {id:'note',type:'item',tx:16,ty:7,name:'Wet Note',color:P.note,msg:"* the paper is soggy... '1027' scribbled in crayon."},
+      {id:'east_door',type:'door',tx:19,ty:12,to:1,tox:2,toy:5,locked:true,code:'readNote',lockedMsg:"* a keypad glows red. 4 digits.",f:'null'}
     ]
   },
-  { // 1 EAST WING (blood & janitor)
-    dark:0.75, light:90,
+  { // 1 EAST WING
+    dark:0.72, lightR:80,
     grid:[
-      "########################",
-      "#b....b#......b........#",
-      "#.####.#.####.#######..#",
-      "#.#..#.#.#..#.#.....#..#",
-      "#.#..#...#..#.#...J.#..#",
-      "#.#..#####..#.#.....#..#",
-      "#.#..........#.#####.#.#",
-      "#.####.######.#......#.#",
-      "#......#b....b..######.#",
-      "#########.####.#......b#",
-      "#.........#..#.#.#####.#",
-      "#.#########..#.#.#...#.#",
-      "#.#..........#...#.#...#",
-      "#.#.##########.###.#####",
-      "#..............#.......#",
-      "########################"
+      "####################################",
+      "#b....b......b.........b...........#",
+      "#.####.######.########.###########.#",
+      "#.#..#.#....#.#......#.#.........#.#",
+      "#.#..#.#.J..#.#......#.#.........#.#",
+      "#.#..#.#....#.#......#.#.........#.#",
+      "#.#..#.#....#.#......#.#.........#.#",
+      "#.#..#.######.########.###########.#",
+      "#.#..........................b.....#",
+      "#.########.##############.#######.#",
+      "#........#.#............#.#.......#",
+      "########.#.#.##########.#.#.#######",
+      "#........#.#.#........#.#.#.......#",
+      "#.########.#.#.########.#.#######.#",
+      "#............#..........#.........#",
+      "#.###############################.#",
+      "#.................................d#",
+      "####################################"
     ],
     ents:[
-      {id:'janitor',type:'npc',tx:18,ty:4,face:-1,lines:["*sweep sweep*","yer not supposed to be here.","the basement's hungry.","take this fuse.","dont look at the dark too long."]},
-      {id:'fuse_a',type:'item',tx:9,ty:7,name:'Fuse A',color:C.fuse,msg:"a heavy fuse. it vibrates in ur hand."},
-      {id:'back_door',type:'door',tx:1,ty:12,to:0,tox:5,toy:12,locked:false}
+      {id:'janitor',type:'npc',tx:11,ty:4,face:-1,who:'MR. MOP',f:'janitor',lines:[
+        {t:"* an old man mops the same stain.",f:'janitor'},
+        {t:"yer not supposed to be here.",f:'janitor'},
+        {t:"the basement hungers. lights got teeth.",f:'janitor'},
+        {t:"here. a fuse. im busy.",f:'janitor'}
+      ]},
+      {id:'fuse_a',type:'item',tx:6,ty:8,name:'Fuse A',color:P.fuse,msg:"* a glass fuse. it hums low."},
+      {id:'door_back',type:'door',tx:36,ty:16,to:0,tox:20,toy:12,locked:false}
     ]
   },
-  { // 2 BASEMENT (chase)
-    dark:0.92, light:60,
+  { // 2 BASEMENT
+    dark:0.92, lightR:55,
     grid:[
-      "#######################",
-      "#bbbbbbbbbbbbbbbbbbbbb#",
-      "#b...................b#",
-      "#b.############.####.b#",
-      "#b.#.bbbbbbbb.#.#..#.b#",
-      "#b.#..........#.#..#.b#",
-      "#b.#.########.#.##.#.b#",
-      "#b.#.#......#.#....#.b#",
-      "#b.#.#.####.#.######.b#",
-      "#b.#.#.#..#.#......#.b#",
-      "#b.#.#.#F.#.######.#.b#",
-      "#b.#.#.####.#......#.b#",
-      "#b.#.#......#.####.#.b#",
-      "#b.#.########.#..#.#.b#",
-      "#b.#..........#..#.#.b#",
-      "#b.############..##.b#",
-      "#b..................b#",
-      "#bbbbbbbbbbbbbbbbbbbb#",
-      "#######################"
+      "####################################",
+      "#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#",
+      "#b.................................#",
+      "#b.##############################..#",
+      "#b.#bbbbbbbbbbbbbbbbbbbbbbbbbb.#..#",
+      "#b.#b........................b.#..#",
+      "#b.#b.####################..b.#..#",
+      "#b.#b.#..................#..b.#..#",
+      "#b.#b.#.bbbbbbbbbbbbbbbb.#..b.#..#",
+      "#b.#b.#.b..............b.#..b.#..#",
+      "#b.#b.#.b.###########..b.#..b.#..#",
+      "#b.#b.#.b.#.........#..b.#..b.#..#",
+      "#b.#b.#.b.#...F.....#..b.#..b.#..#",
+      "#b.#b.#.b.#.........#..b.#..b.#..#",
+      "#b.#b.#.b.###########..b.#..b.#..#",
+      "#b.#b.#.b..............b.#..b.#..#",
+      "#b.#b.#.bbbbbbbbbbbbbbbb.#..b.#..#",
+      "#b.#b.#..................#..b.#..#",
+      "#b.#b.####################..b.#..#",
+      "#b.#b........................b.#..#",
+      "#b.#bbbbbbbbbbbbbbbbbbbbbbbbbb.#..#",
+      "#b.#...........................#..#",
+      "#b.##############################..#",
+      "#b.................................#",
+      "#bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb#",
+      "####################################"
     ],
     ents:[
-      {id:'fuse_b',type:'item',tx:9,ty:10,name:'Fuse B',color:C.gold,msg:"second fuse. the fluorescent lights buzz louder..."},
-      {id:'basement_exit',type:'door',tx:11,ty:14,to:3,tox:2,toy:2,locked:true,code:'gotFuses',lockedMsg:"fuse panel needs 2 fuses."},
-      {id:'stalker',type:'stalker',tx:10,ty:8,active:0}
+      {id:'fuse_b',type:'item',tx:20,ty:12,name:'Fuse B',color:P.gold,msg:"* the second fuse. the buzzing stops... then starts louder."},
+      {id:'basement_exit',type:'door',tx:2,ty:23,to:3,tox:3,toy:3,locked:true,code:'gotFuses',lockedMsg:"* fuse panel. requires TWO fuses."},
+      {id:'stalker',type:'stalker',tx:19,ty:12}
     ]
   },
-  { // 3 END ROOM
-    dark:0.25, light:200,
+  { // 3 CHOICE ROOM
+    dark:0.25, lightR:160,
     grid:[
-      "#############",
-      "#...........#",
-      "#.S.........#",
-      "#...........#",
-      "#...........#",
-      "#....P......#",
-      "#...........#",
-      "#############"
+      "#################",
+      "#...............#",
+      "#.S.............#",
+      "#...............#",
+      "#......P........#",
+      "#...............#",
+      "#...............#",
+      "#################"
     ],
     ents:[
-      {id:'panel',type:'panel',tx:5,ty:5,lines:["fuses slotted.","power surges.","a red door appears in the lobby.","wait.. it was always there?"]}
+      {id:'panel',type:'panel',tx:7,ty:4,who:'PANEL',f:'null',lines:[
+        {t:"* you slot both fuses.",f:'null'},
+        {t:"* the walls exhale.",f:'null'},
+        {t:"* a red door opens in the lobby.",f:'null'},
+        {t:"* do you go back?",f:'player'}
+      ]}
     ]
   }
 ];
 
-// === STATE ===
-let mode='title';
+// ==============================================================
+// STATE
+// ==============================================================
+let mode='title'; // title play chat dead winA winB
 let area=0, walls=[], ents=[];
-let player={x:0,y:0,vx:0,vy:0,dir:1,moving:0,idle:0,step:0};
+let player={x:0,y:0,vx:0,vy:0,dir:1,moving:0,idle:0,step:0,run:0,stam:STAM_MAX};
 let cam={x:0,y:0};
-let inv=[];
-let flags={readNote:0,gotA:0,gotB:0,gotFuses:0};
-let chat=null; // {lines,idx,pos,tick,speaker}
-let parts=[];
+let inv=[]; // {name,color}
+let flags={readNote:0,gotA:0,gotB:0,gotFuses:0,seenStalker:0};
+let chat=null;
+let parts=[]; // particles
 let shake=0;
+let stalker={x:-999,y:-999,on:0,spd:0.85};
 let tick=0;
-let stalker={x:0,y:0,on:0,speed:0.8};
-let runActive=false;
 
-function initArea(idx){
-  area=idx; const d=MAPS[idx];
-  walls=[]; ents=d.ents.map(e=>({...e}));
-  for(let row of d.grid){
-    walls.push(row.split('').map(c=>c==='#'?1:0));
-  }
-  // find S
+function parseArea(idx){
+  area=idx; const d=MAPS[idx]; walls=[]; ents=d.ents.map(e=>({...e}));
+  for(let row of d.grid) walls.push(row.split('').map(c=>c==='#'?1:0));
+  // spawn S
   for(let y=0;y<d.grid.length;y++){
     const x=d.grid[y].indexOf('S');
-    if(x>=0){ player.x=x*TILE+TILE/2; player.y=y*TILE+TILE/2; }
+    if(x>=0){ player.x=x*TILE+8; player.y=y*TILE+8; }
+  }
+  if(d.intro && !flags['seen_'+idx]){
+    flags['seen_'+idx]=1;
+    startChat(d.intro.who, d.intro.f, [{t:d.intro.t,f:d.intro.f}]);
   }
   if(area===2){
     const s=ents.find(e=>e.id==='stalker');
-    if(s){ stalker.x=s.tx*TILE+TILE/2; stalker.y=s.ty*TILE+TILE/2; stalker.on=0; }
-  }
-  if(d.intro && !flags['seen'+idx]){
-    flags['seen'+idx]=1;
-    queueChat('???', [{t:d.intro,g:0}]);
+    if(s){ stalker.x=s.tx*TILE+8; stalker.y=s.ty*TILE+8; stalker.on=0; }
   }
 }
 
-initArea(0);
+parseArea(0);
 
-function queueChat(who,lines){
-  mode='chat';
-  chat={who,lines:[...lines],idx:0,pos:0,tick:0};
-}
-
-// === HELPERS ===
+// ==============================================================
+// GAMEPLAY HELPERS
+// ==============================================================
 function solid(tx,ty){
   if(ty<0||ty>=walls.length||tx<0||tx>=walls[0].length) return 1;
   return walls[ty][tx];
 }
-function hitworld(x,y,r){
+function colWorld(x,y,r){
   const pts=[[-r,-r],[r,-r],[-r,r],[r,r],[0,-r],[0,r],[-r,0],[r,0]];
   for(let [px,py] of pts){
-    const tx=Math.floor((x+px)/TILE), ty=Math.floor((y+py)/TILE);
-    if(solid(tx,ty)) return 1;
+    if(solid(Math.floor((x+px)/TILE), Math.floor((y+py)/TILE))) return 1;
   }
   return 0;
 }
 
-// === UPDATE ===
+function startChat(who, face, lines){
+  mode='chat'; chat={who,face,lines:[...lines],idx:0,pos:0,tm:0};
+}
+function advanceChat(){
+  chat.idx++; chat.pos=0; chat.tm=0;
+  if(chat.idx>=chat.lines.length){
+    // post-chat hooks
+    const last = chat.lines[chat.lines.length-1];
+    chat=null; mode='play';
+    // janitor gifts fuse after chat
+    if(!flags.gotA && area===1){
+      flags.gotA=1; inv.push({name:'Fuse A',col:P.fuse});
+      startChat('MR. MOP','janitor',[{t:"* he shoves a fuse into your hands.",f:'janitor'},{t:"go on. git.",f:'janitor'}]);
+      return;
+    }
+    // panel opens return
+    if(flags.gotA && flags.gotB && area===3){
+      flags.gotFuses=1;
+      // teleport back to lobby with exit open
+      parseArea(0);
+      // replace east door with end trigger or open it
+      const door=ents.find(e=>e.id==='east_door');
+      if(door){ door.locked=false; door.toEnd=true; door.to=0; door.tox=20; door.toy=12; }
+      startChat('???','player',[{t:"* the red door is open.",f:'player'},{t:"* it leads to your bedroom... or deeper?",f:'player'}]);
+    }
+  }
+}
+
+function kill(){
+  mode='dead'; shake=35; setTimeout(()=>{ if(mode==='dead'){ mode='play'; parseArea(area); shake=0; } }, 2500);
+}
+
+// ==============================================================
+// UPDATE
+// ==============================================================
 function update(){
   tick++;
   if(shake) shake--;
 
-  // title
   if(mode==='title'){
-    if(act() && !actPrev){ mode='play'; actPrev=true; }
-    else if(!act()) actPrev=false;
+    if(actDown() && !ActPrev){ mode='play'; ActPrev=true; }
+    else if(!actDown()) ActPrev=false;
     return;
   }
-  // endings
-  if(mode==='endA' || mode==='endB'){
-    if(act() && !actPrev){ mode='title'; initArea(0); inv=[]; flags={}; actPrev=true; }
-    else if(!act()) actPrev=false;
-    return;
-  }
-  // death
   if(mode==='dead'){
-    if(shake) shake--;
-    if(tick%60<30 && !actPrev && act()){ mode='play'; initArea(area); actPrev=true; }
-    else if(!act()) actPrev=false;
+    if(!actDown()) ActPrev=false;
+    return;
+  }
+  if(mode==='winA' || mode==='winB'){
+    if(actDown() && !ActPrev){ mode='title'; flags={}; inv=[]; parseArea(0); ActPrev=true; }
+    else if(!actDown()) ActPrev=false;
     return;
   }
 
-  // chat
   if(mode==='chat'){
-    chat.tick++;
-    if(chat.tick%3===0 && chat.pos<chat.lines[chat.idx].t.length) chat.pos++;
-    if(act() && !actPrev){
-      actPrev=true;
+    chat.tm++;
+    if(chat.tm%3===0 && chat.pos<chat.lines[chat.idx].t.length){
+      chat.pos++;
+      if(chat.tm%6===0) beep(700+Math.random()*200,0.02,0.03,'triangle');
+    }
+    if(actDown() && !ActPrev){
+      ActPrev=true;
       if(chat.pos<chat.lines[chat.idx].t.length) chat.pos=chat.lines[chat.idx].t.length;
-      else{
-        chat.idx++; chat.pos=0; chat.tick=0;
-        if(chat.idx>=chat.lines.length){
-          mode='play'; chat=null;
-          // post-chat events
-          if(flags.endChoice===1){ mode='endA'; }
-          if(flags.endChoice===2){ mode='endB'; }
-        }
-      }
-    }else if(!act()) actPrev=false;
+      else advanceChat();
+    }else if(!actDown()) ActPrev=false;
     updateParts(); return;
   }
 
   // PLAY
   let mx=0,my=0;
-  if(keys.ArrowUp||keys.KeyW) my=-1;
-  if(keys.ArrowDown||keys.KeyS) my=1;
-  if(keys.ArrowLeft||keys.KeyA) mx=-1;
-  if(keys.ArrowRight||keys.KeyD) mx=1;
-  if(joy.on){ mx=joy.dx/18; my=joy.dy/18; if(Math.hypot(mx,my)>1){const d=Math.hypot(mx,my);mx/=d;my/=d;} }
+  if(Keys.ArrowUp||Keys.KeyW) my=-1;
+  if(Keys.ArrowDown||Keys.KeyS) my=1;
+  if(Keys.ArrowLeft||Keys.KeyA) mx=-1;
+  if(Keys.ArrowRight||Keys.KeyD) mx=1;
+  if(Joy.on){ mx=Joy.dx/18; my=Joy.dy/18; const d=Math.hypot(mx,my); if(d>1){mx/=d;my/=d;} }
 
-  const spd=(keys.ShiftLeft||keys.ShiftRight||runActive)?1.6:0.95;
+  const running = runDown() && player.stam>0;
+  const spd = running ? RUN_SPD : WALK_SPD;
+  if(running && (mx||my)){ player.stam--; player.run=1; } else { player.run=0; if(player.stam<STAM_MAX) player.stam+=0.4; }
+
   if(Math.hypot(mx,my)>0.1){
-    player.vx+=(mx*spd-player.vx)*0.25;
-    player.vy+=(my*spd-player.vy)*0.25;
+    player.vx+=(mx*spd-player.vx)*ACCEL;
+    player.vy+=(my*spd-player.vy)*ACCEL;
     player.moving=1; player.idle=0; player.step++;
     if(mx>0.2) player.dir=1; else if(mx<-0.2) player.dir=-1;
-  }else{ player.vx*=0.7; player.vy*=0.7; player.moving=0; player.idle++; }
+  }else{ player.vx*=FRICTION; player.vy*=FRICTION; if(Math.abs(player.vx)<0.05)player.vx=0; if(Math.abs(player.vy)<0.05)player.vy=0; player.moving=0; player.idle++; }
 
   let nx=player.x+player.vx, ny=player.y+player.vy;
-  if(!hitworld(nx,player.y,4.5)) player.x=nx; else{ player.vx*=-0.4; shake+=2; }
-  if(!hitworld(player.x,ny,4.5)) player.y=ny; else{ player.vy*=-0.4; shake+=2; }
+  if(!colWorld(nx,player.y,4.5)) player.x=nx; else{ player.vx=0; }
+  if(!colWorld(player.x,ny,4.5)) player.y=ny; else{ player.vy=0; }
 
   const mw=walls[0].length*TILE, mh=walls.length*TILE;
   player.x=Math.max(6,Math.min(mw-6,player.x));
   player.y=Math.max(6,Math.min(mh-6,player.y));
 
-  // foot dust
-  if(player.moving && Math.hypot(player.vx,player.vy)>0.3 && player.step%10===0){
-    parts.push({x:player.x+(Math.random()-.5)*6,y:player.y+6,vx:(Math.random()-.5)*.3,vy:-Math.random()*.4,life:25,col:(Math.random()>.8?C.blood1:'#334155')});
+  if(player.moving && Math.hypot(player.vx,player.vy)>0.3 && tick%8===0){
+    parts.push({x:player.x+(Math.random()-.5)*6,y:player.y+7,vx:(Math.random()-.5)*.3,vy:-.2,life:22,col:(Math.random()>.85?P.blood:'#2e3440')});
   }
 
-  // cam follow
-  cam.x+=(player.x-W/2-cam.x)*0.12; cam.y+=(player.y-H/2-cam.y)*0.12;
-  cam.x=Math.max(0,Math.min(mw-W,cam.x)); cam.y=Math.max(0,Math.min(mh-H,cam.y));
+  cam.x+=(player.x-cam.x)*0.18; cam.y+=(player.y-cam.y)*0.18;
 
-  // entities interaction & activation
-  const ad=MAPS[area];
+  // entity interactions
+  let nearNpc=false;
   for(let e of ents){
-    const ex=e.tx*TILE+TILE/2, ey=e.ty*TILE+TILE/2;
+    const ex=e.tx*TILE+8, ey=e.ty*TILE+8;
     const d=Math.hypot(player.x-ex,player.y-ey);
-    // NPC proximity
-    if(e.type==='npc' && d<18 && act() && !actPrev){
-      actPrev=true; queueChat(e.id,e.lines); break;
-    }
-    // item pickup
-    if(e.type==='item' && d<16 && act() && !actPrev){
-      actPrev=true;
-      if(e.id==='note') flags.readNote=1;
-      if(e.id==='fuse_a') flags.gotA=1;
-      if(e.id==='fuse_b'){ flags.gotB=1; triggerStalker(); }
-      inv.push({name:e.name,col:e.color});
-      queueChat('PICKED UP',[{t:e.msg,g:0}]);
-      // remove from ents
-      const i=ents.indexOf(e); if(i>-1) ents.splice(i,1);
-      break;
-    }
-    // door
-    if(e.type==='door' && d<16){
-      if(act() && !actPrev){
-        actPrev=true;
-        if(e.locked){
-          if(e.code==='readNote' && flags.readNote){ e.locked=false; queueChat('DOOR',[{t:'the lock clicks. 1027...',g:0}]); }
-          else if(e.code==='gotFuses' && flags.gotA && flags.gotB){ e.locked=false; flags.gotFuses=1; queueChat('PANEL',[{t:'both fuses click into place.',g:0},{t:'the eastern wall hums...',g:1}]); }
-          else{ queueChat('DOOR',[{t:e.lockedMsg||'locked.',g:0}]); }
-        }else{
-          // teleport
-          initArea(e.to); player.x=e.tox*TILE+TILE/2; player.y=e.toy*TILE+TILE/2;
+    if(d<18){
+      if(e.type==='npc' && actDown() && !ActPrev){
+        ActPrev=true; startChat(e.who||e.id, e.f||'null', e.lines.map(l=>(typeof l==='string'?{t:l,f:e.f||'null'}:l))); nearNpc=true; break;
+      }
+      if(e.type==='item' && actDown() && !ActPrev){
+        ActPrev=true;
+        if(e.id==='note') flags.readNote=1;
+        if(e.id==='fuse_a') flags.gotA=1;
+        if(e.id==='fuse_b'){ flags.gotB=1; }
+        inv.push({name:e.name,col:e.color});
+        startChat('FOUND', e.f||'null', [{t:e.msg,f:e.f||'player'}]);
+        const i=ents.indexOf(e); if(i>-1) ents.splice(i,1); nearNpc=true; break;
+      }
+      if(e.type==='door' && d<16){
+        if(actDown() && !ActPrev){
+          ActPrev=true;
+          if(e.locked){
+            if((e.code==='readNote'&&flags.readNote)||(e.code==='gotFuses'&&flags.gotA&&flags.gotB)){
+              e.locked=false; startChat('DOOR','null',[{t:'* the lock clicks open.',f:'null'}]);
+            }else{
+              startChat('DOOR',e.f||'null',[{t:e.lockedMsg,f:e.f||'null'}]);
+            }
+          }else{
+            if(e.toEnd){
+               // final choice
+               const left = player.x < e.tx*TILE+8;
+               if(left){
+                 startChat('END','player',[
+                   {t:"* you step through. pale morning light.",f:'player'},
+                   {t:"* the sheets are wet with sweat.",f:'player'},
+                   {t:"* a single yellow hair on the pillow.",f:'player'},
+                   {t:"THE END (WAKE UP)",f:'null'}
+                 ]); mode='winA';
+               }else{
+                 startChat('END','stalker',[
+                   {t:"* the hall goes deeper.",f:'stalker'},
+                   {t:"* milo pours you juice.",f:'milo'},
+                   {t:"* mr mop nods. this is home now.",f:'janitor'},
+                   {t:"THE END (STAY)",f:'null'}
+                 ]); mode='winB';
+               }
+            }else{
+              parseArea(e.to); player.x=e.tox*TILE+8; player.y=e.toy*TILE+8;
+            }
+          }
         }
-        break;
+        nearNpc=true; break;
       }
-      // auto walk through unlocked
-      if(!e.locked && d<10){ initArea(e.to); player.x=e.tox*TILE+TILE/2; player.y=e.toy*TILE+TILE/2; break; }
-    }
-    // panel
-    if(e.type==='panel' && d<18 && act() && !actPrev){
-      actPrev=true;
-      if(flags.gotA && flags.gotB){
-        flags.endChoice=1;
-        queueChat('???',[ {t:'you slot both fuses.',g:0}, {t:'the whole building groans.',g:1}, {t:'red light spills from the lobby door.',g:1}, {t:'do you go back?',g:0} ]);
-      }else{
-        queueChat('PANEL',[{t:'needs 2 fuses.',g:0}]);
+      if(e.type==='panel' && d<18 && actDown() && !ActPrev){
+        ActPrev=true;
+        if(flags.gotA && flags.gotB){
+          // handled in advanceChat teleport
+          startChat(e.who||'PANEL', e.f||'null', e.lines.map(l=>(typeof l==='string'?{t:l,f:e.f||'null'}:l)));
+        }else{
+          startChat('PANEL','null',[{t:"* two slots. both empty.",f:'null'}]);
+        } nearNpc=true; break;
       }
-      break;
     }
-    // end trigger in lobby after fuses
-    if(e.type==='door' && e.id==='east_door' && flags.gotFuses && d<18 && !e.toEnd){
-      e.toEnd=true; e.locked=false;
-    }
-    if(e.type==='door' && e.toEnd && d<10){
-      initArea(3); // actually we reuse simple choice
-      // choice immediates
-      flags.endChoice=Math.random()>.5?1:2;
-      if(flags.endChoice===1) queueChat('END',[ {t:'the red door opens to your bedroom.',g:0}, {t:'it was a fever dream.',g:0}, {t:'but the floor is sticky.',g:1}, {t:'THE END (WAKE UP)',g:0} ]);
-      else queueChat('END',[ {t:'the red door opens deeper inward.',g:0}, {t:'milo waves from a table.',g:0}, {t:'mr mop pours you juice.',g:0}, {t:'you decide to stay.',g:0}, {t:'THE END (STAY)',g:0} ]);
+  }
+  if(!actDown()) ActPrev=false;
+
+  // auto-use unlocked doors
+  if(!nearNpc) for(let e of ents){
+    if(e.type==='door' && !e.locked && !e.toEnd){
+      const ex=e.tx*TILE+8, ey=e.ty*TILE+8;
+      if(Math.hypot(player.x-ex,player.y-ey)<9){ parseArea(e.to); player.x=e.tox*TILE+8; player.y=e.toy*TILE+8; break; }
     }
   }
 
-  // npc idle bob
-  for(let e of ents) if(e.type==='npc') e.bob=Math.sin(tick*0.08+e.tx)*1.5;
+  // npc bob
+  for(let e of ents) if(e.type==='npc') e._bob=Math.sin(tick*0.1+e.tx)*1.4;
 
-  // STALKER AI
+  // STALKER
   if(area===2){
-    const sdat=ents.find(e=>e.id==='stalker');
-    if(stalker.on && sdat){
+    const se=ents.find(e=>e.id==='stalker');
+    if(se && !stalker.on && flags.gotB){ stalker.on=1; }
+    if(stalker.on){
       const dx=player.x-stalker.x, dy=player.y-stalker.y, dst=Math.hypot(dx,dy);
-      if(dst>4){
-        stalker.x+=(dx/dst)*stalker.speed; stalker.y+=(dy/dst)*stalker.speed;
-      }
-      // jitter
+      if(dst>4){ stalker.x+=(dx/dst)*stalker.spd; stalker.y+=(dy/dst)*stalker.spd; }
       stalker.x+=(Math.random()-.5)*1.5; stalker.y+=(Math.random()-.5)*1.5;
-      if(dst<10){ mode='dead'; shake=40; }
-      if(dst<70) shake=Math.max(shake,3);
-      // dust trail
-      if(tick%4===0) parts.push({x:stalker.x,y:stalker.y+8,vx:(Math.random()-.5)*.5,vy:.2,life:20,col:'#2a0a0a'});
-    }else if(stalker.on && !sdat){
-      // stalker not in ents list but active? should not happen
+      if(dst<10) kill();
+      if(dst<80) shake=Math.max(shake,2);
+      if(tick%4===0) parts.push({x:stalker.x,y:stalker.y+8,vx:(Math.random()-.5)*.4,vy:.1,life:18,col:'#2a0808'});
     }
   }
 
-  // psych particles
-  if(ad.dark>0.8 && Math.random()<.08){
-    parts.push({x:cam.x+Math.random()*W,y:cam.y+Math.random()*H,vx:0,vy:-.3,life:40,col:'#5c1a1a'});
+  // psych ambiance
+  const ad=MAPS[area];
+  if(ad.dark>0.8 && Math.random()<.06){
+    parts.push({x:cam.x+(Math.random()-.5)*W/CAM_ZOOM,y:cam.y+(Math.random()-.5)*H/CAM_ZOOM,vx:0,vy:-.25,life:45,col:'#5c1018'});
   }
 
   updateParts();
 }
+function updateParts(){ for(let p of parts){ p.x+=p.vx; p.y+=p.vy; p.life--; } parts=parts.filter(p=>p.life>0); }
 
-function triggerStalker(){
-  const s=ents.find(e=>e.id==='stalker');
-  if(s){ stalker.on=1; s.active=1; }
-}
-
-function updateParts(){
-  for(let p of parts){ p.x+=p.vx; p.y+=p.vy; p.life--; }
-  parts=parts.filter(p=>p.life>0);
-}
-
-// === DRAW ===
+// ==============================================================
+// RENDER
+// ==============================================================
 function draw(){
-  ctx.fillStyle=C.bg; ctx.fillRect(0,0,W,H);
+  C.fillStyle=P.bg; C.fillRect(0,0,W,H);
 
   if(mode==='title'){ drawTitle(); return; }
-  if(mode==='endA'){ drawEnd('WAKE UP','the sheets were never this cold before.'); return; }
-  if(mode==='endB'){ drawEnd('STAY','the juice tastes like copper and sugar.'); return; }
+  if(mode==='winA'){ drawWin('WAKE UP','you open your eyes. the clock reads 3:33 am.'); return; }
+  if(mode==='winB'){ drawWin('STAY','the walls breathe. you are not alone anymore.'); return; }
   if(mode==='dead'){ drawDead(); return; }
 
-  ctx.save();
-  if(shake) ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
-  ctx.translate(-Math.floor(cam.x), -Math.floor(cam.y));
+  C.save();
+  if(shake) C.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+
+  // CAMERA ZOOM AROUND PLAYER
+  C.translate(W/2, H/2);
+  C.scale(CAM_ZOOM, CAM_ZOOM);
+  C.translate(-Math.floor(player.x), -Math.floor(player.y));
 
   const ad=MAPS[area];
   const gy=ad.grid.length, gx=ad.grid[0].length;
-  const t0x=Math.max(0,Math.floor(cam.x/TILE)), t0y=Math.max(0,Math.floor(cam.y/TILE));
-  const t1x=Math.min(gx,Math.ceil((cam.x+W)/TILE)), t1y=Math.min(gy,Math.ceil((cam.y+H)/TILE));
+  const t0x=Math.max(0,Math.floor((player.x - W/(2*CAM_ZOOM))/TILE)-2);
+  const t0y=Math.max(0,Math.floor((player.y - H/(2*CAM_ZOOM))/TILE)-2);
+  const t1x=Math.min(gx,Math.ceil((player.x + W/(2*CAM_ZOOM))/TILE)+2);
+  const t1y=Math.min(gy,Math.ceil((player.y + H/(2*CAM_ZOOM))/TILE)+2);
 
-  // floor & walls
+  // tiles
   for(let y=t0y;y<t1y;y++){
     for(let x=t0x;x<t1x;x++){
       const ch=ad.grid[y][x];
       const px=x*TILE, py=y*TILE;
       if(ch==='#'){
-        ctx.fillStyle=C.wall; ctx.fillRect(px,py,TILE,TILE);
-        ctx.fillStyle=C.wallHi; ctx.fillRect(px,py,TILE,3);
-        ctx.fillStyle=C.wallLo; ctx.fillRect(px,py+TILE-4,TILE,4);
-        // bricks
-        ctx.fillStyle=C.wallHi; ctx.fillRect(px+2,py+6,8,2); ctx.fillRect(px+12,py+12,6,2);
+        rect(px,py,TILE,TILE,P.wall);
+        rect(px,py,TILE,3,P.wallHi);
+        rect(px,py+TILE-3,TILE,3,P.wallLo);
+        // brick detail
+        C.fillStyle=P.wallHi; rect(px+2,py+6,8,2); rect(px+10,py+12,4,2);
+        // cracks
+        if(((x*7+y*13)%11)<3){ C.fillStyle=P.wallLo; C.fillRect(px+4,py+10,2,6); }
       }else if(ch==='b'){
-        ctx.fillStyle=C.floor; ctx.fillRect(px,py,TILE,TILE);
-        // blood pools (deterministic)
-        ctx.fillStyle=((x*7+y*13)%5<2)?C.blood1:C.blood2;
-        if((x^y)%3===0) ctx.fillRect(px+2,py+8,10,6);
-        if((x+y)%4===1) ctx.fillRect(px+14,py+4,6,4);
-        ctx.fillStyle=C.blood1; ctx.fillRect(px+4,py+14,3,2);
+        rect(px,py,TILE,TILE,P.fl1);
+        // blood pools
+        C.fillStyle=P.darkb; if((x^y)%3===0) rect(px+2,py+8,10,6);
+        C.fillStyle=P.blood; if((x+y)%4===1) rect(px+8,py+4,8,4);
+        rect(px+3,py+13,4,2);
       }else{
-        ctx.fillStyle=((x+y)%2)?C.floor:C.floorAlt;
-        ctx.fillRect(px,py,TILE,TILE);
-        // floor grime
-        if((x*3+y*11)%7===0){ ctx.fillStyle='#1a1e2e'; ctx.fillRect(px+8,py+8,3,3); }
+        rect(px,py,TILE,TILE,((x+y)%2)?P.fl1:P.fl2);
+        // grime
+        if(((x*3+y*11)%9)===0){ C.fillStyle='#1c1f2a'; C.fillRect(px+6,py+6,3,3); }
       }
-      // wall shadows from adjacent floors
+      // wall shadows cast down
       if(ch==='#' && y+1<gy && ad.grid[y+1][x]!=='#'){
-        ctx.fillStyle='rgba(0,0,0,.4)'; ctx.fillRect(px,py+TILE,TILE,6);
+        C.fillStyle='rgba(0,0,0,.45)'; C.fillRect(px,py+TILE,TILE,5);
+      }
+      // pipes on some walls
+      if(ch==='#' && (x%5===0) && y>0 && ad.grid[y-1][x]==='#'){
+        C.fillStyle='#0f111a'; C.fillRect(px+10,py-2,4,4);
       }
     }
   }
 
-  // sort entities + player by Y for depth
-  const renderList=[...ents,{_player:true,y:player.y}];
-  renderList.sort((a,b)=> (a.y||a.ty*TILE)-(b.y||b.ty*TILE));
+  // render list for depth sorting
+  const list=[...ents,{_player:true,y:player.y+6}];
+  list.sort((a,b)=>(a._player?a.y:(a.ty*TILE+16)) - (b._player?b.y:(b.ty*TILE+16)));
 
-  for(let e of renderList){
-    if(e._player){ drawPlayer(player.x,player.y); continue; }
-    const ex=e.tx*TILE+TILE/2, ey=e.ty*TILE+TILE/2;
-    // skip if far offscreen
-    if(ex<cam.x-30||ex>cam.x+W+30||ey<cam.y-30||ey>cam.y+H+30) continue;
+  for(let e of list){
+    if(e._player){ drawPlayerSprite(player.x, player.y); continue; }
     const px=e.tx*TILE, py=e.ty*TILE;
+    if(px<player.x-W/CAM_ZOOM-40 || px>player.x+W/CAM_ZOOM+40 || py<player.y-H/CAM_ZOOM-40 || py>player.y+H/CAM_ZOOM+40) continue;
 
     if(e.type==='npc'){
-      const b=e.bob||0;
-      ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(px+8,py+20,8,3);
+      const b=e._bob||0;
+      C.fillStyle='rgba(0,0,0,.4)'; C.fillRect(px+6,py+22,12,3);
       // body
-      ctx.fillStyle=e.id==='milo'?C.npc1:C.npc2;
-      ctx.fillRect(px+8,py+10+b,8,10);
+      C.fillStyle=e.f==='milo'?P.milo:P.janitor;
+      rect(px+6,py+12+b,12,10);
       // head
-      ctx.fillStyle='#f1c40f'; ctx.fillRect(px+8,py+4+b,8,6);
+      C.fillStyle='#f1c40f'; rect(px+6,py+4+b,12,9);
       // hair
-      ctx.fillStyle='#3e2723'; ctx.fillRect(px+7,py+2+b,10,3);
-      // face
-      ctx.fillStyle='#111';
-      if(e.face>0){ ctx.fillRect(px+12,py+6+b,2,2); } else { ctx.fillRect(px+10,py+6+b,2,2); }
+      C.fillStyle='#332211'; rect(px+5,py+2+b,14,4);
+      if(e.face===-1) rect(px+4,py+2+b,5,10); else rect(px+13,py+2+b,5,10);
+      // eyes
+      C.fillStyle='#111'; if(e.face>0) rect(px+11,py+7+b,2,2); else rect(px+9,py+7+b,2,2);
       // legs
-      ctx.fillStyle=C.pants;
-      ctx.fillRect(px+9,py+20+b,2,3); ctx.fillRect(px+13,py+20+b,2,3);
-      // icon
-      if(e.id==='janitor'){
-        ctx.fillStyle='#64748b'; ctx.fillRect(px+6,py+13+b,2,5); // mop handle
-        ctx.fillStyle='#86efac'; ctx.fillRect(px+4,py+18+b,6,3);
-      }
+      C.fillStyle=P.pants; rect(px+7,py+22+b,3,3); rect(px+14,py+22+b,3,3);
+      // janitor mop
+      if(e.id==='janitor'){ C.fillStyle='#475569'; C.fillRect(px+2,py+10+b,2,14); C.fillStyle=P.janitor; C.fillRect(px,py+22+b,6,4); }
     }
     if(e.type==='item'){
       const bob=Math.sin(tick*0.12+e.tx)*3;
-      ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(px+9,py+20,6,2);
-      ctx.fillStyle=e.color||C.white;
-      if(e.id.includes('fuse')){
-        ctx.fillRect(px+8,py+10+bob,8,10); ctx.fillStyle='#fff'; ctx.fillRect(px+10,py+12+bob,2,2);
-      }else{
-        ctx.fillRect(px+7,py+9+bob,10,8);
-      }
+      C.fillStyle='rgba(0,0,0,.4)'; C.fillRect(px+6,py+22,10,3);
+      C.fillStyle=e.color||P.white;
+      if(e.name.includes('Fuse')){ rect(px+7,py+10+bob,10,12); C.fillStyle='#fff'; rect(px+10,py+13+bob,3,3); }
+      else{ rect(px+6,py+8+bob,12,10); C.fillStyle='#cbd5e1'; rect(px+8,py+10+bob,8,6); }
     }
     if(e.type==='door'){
-      ctx.fillStyle=e.locked?'#450a0a':'#334155';
-      ctx.fillRect(px+2,py,20,24);
-      ctx.fillStyle='#0f172a'; ctx.fillRect(px+5,py+3,14,18);
-      ctx.fillStyle=e.locked?'#dc2626':'#22c55e';
-      ctx.fillRect(px+10,py+10,4,4);
+      C.fillStyle=e.locked?P.darkb:'#334155';
+      rect(px+2,py,20,24); rect(px+5,py+3,14,18,P.bg);
+      C.fillStyle=e.locked?P.redeye:'#22c55e'; rect(px+11,py+10,4,4);
+      // blood on locked door
+      if(e.locked){ C.fillStyle=P.blood; C.fillRect(px+4,py+16,4,3); C.fillRect(px+14,py+18,3,2); }
     }
     if(e.type==='panel'){
-      ctx.fillStyle='#1e293b'; ctx.fillRect(px+4,py+4,18,16);
-      ctx.fillStyle='#0ea5e9'; for(let i=0;i<3;i++) ctx.fillRect(px+6,py+6+i*4,4,2);
+      rect(px+4,py+4,18,16,'#1e293b'); rect(px+6,py+6,4,4,P.redeye); rect(px+14,py+6,4,4,P.gold); rect(px+6,py+14,12,2,'#475569');
     }
     if(e.type==='stalker'){
-      const sx=Math.sin(tick*0.6)*3;
-      // flicker visibility based on distance
-      const d=Math.hypot(player.x-ex,player.y-ey);
-      const vis = d<40?1:(d<80?0.6:0.25);
-      ctx.globalAlpha=vis;
-      ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(px+6,py+22,12,4);
-      ctx.fillStyle=C.stalker;
-      ctx.fillRect(px+8+sx,py,8,24); // tall body
-      ctx.fillRect(px+6+sx,py-4,12,6); // head
+      const jitter=Math.sin(tick*0.8)*4;
+      const d=Math.hypot(player.x-(px+8),player.y-(py+8));
+      C.globalAlpha = d<50?1:(d<100?0.6:0.25);
+      C.fillStyle='rgba(0,0,0,.6)'; C.fillRect(px+4,py+22,16,4);
+      C.fillStyle=P.stalker; rect(px+6+jitter,py-2,12,28); rect(px+4+jitter,py-6,16,8);
       // eyes
-      ctx.fillStyle=C.eye; ctx.fillRect(px+8+sx,py-1,2,2); ctx.fillRect(px+12+sx,py-1,2,2);
+      C.fillStyle=P.redeye; rect(px+8+jitter,py-2,4,4); rect(px+14+jitter,py-2,4,4);
+      C.fillStyle='#fff'; rect(px+9+jitter,py-1,1,1); rect(px+15+jitter,py-1,1,1);
       // mouth
-      ctx.fillStyle='#7f1d1d'; ctx.fillRect(px+9+sx,py+2,4,1);
-      ctx.globalAlpha=1;
+      C.fillStyle=P.redeye; rect(px+10+jitter,py+4,6,2); rect(px+8+jitter,py+2,2,2); rect(px+16+jitter,py+2,2,2);
+      C.globalAlpha=1;
     }
   }
 
   // particles
-  for(let p of parts){
-    ctx.globalAlpha=p.life/25;
-    ctx.fillStyle=p.col;
-    ctx.fillRect(p.x,p.y,2,2);
+  for(let p of parts){ C.globalAlpha=p.life/24; C.fillStyle=p.col; C.fillRect(p.x,p.y,2,2); }
+  C.globalAlpha=1;
+
+  // blood footprints behind player occasionally
+  if(player.moving && tick%12===0 && area===2){
+    C.fillStyle='rgba(60,10,10,0.35)'; C.fillRect(player.x-3,player.y+6,6,2);
   }
-  ctx.globalAlpha=1;
 
-  ctx.restore(); // end cam
+  C.restore(); // back to screen space
 
-  // lighting overlay
+  // LIGHTING OVERLAY
   if(ad.dark>0){
-    const g=ctx.createRadialGradient(player.x-cam.x,player.y-cam.y,10,player.x-cam.x,player.y-cam.y,ad.light);
+    // flicker light radius in basement
+    let lr = ad.lightR;
+    if(area===2) lr += Math.sin(tick*0.9)*8 + (Math.random()*6);
+    const g=C.createRadialGradient(W/2,H/2,10,W/2,H/2,lr*CAM_ZOOM);
     g.addColorStop(0,'rgba(0,0,0,0)');
-    g.addColorStop(0.6,`rgba(0,0,0,${ad.dark*.5})`);
+    g.addColorStop(0.5,`rgba(0,0,0,${ad.dark*0.5})`);
     g.addColorStop(1,`rgba(0,0,0,${ad.dark})`);
-    ctx.fillStyle=g; ctx.fillRect(0,0,W,H);
+    C.fillStyle=g; C.fillRect(0,0,W,H);
     // vignette
-    const vg=ctx.createRadialGradient(W/2,H/2,H/3,W/2,H/2,H);
-    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.5)');
-    ctx.fillStyle=vg; ctx.fillRect(0,0,W,H);
+    const vg=C.createRadialGradient(W/2,H/2,H/4,W/2,H/2,H*0.9);
+    vg.addColorStop(0,'rgba(0,0,0,0)'); vg.addColorStop(1,'rgba(0,0,0,0.45)');
+    C.fillStyle=vg; C.fillRect(0,0,W,H);
   }
 
-  // UI: Chat box
-  if(mode==='chat'){
-    const yb=H-46;
-    ctx.fillStyle='rgba(10,10,15,0.95)';
-    ctx.strokeStyle=C.white; ctx.lineWidth=1;
-    ctx.fillRect(6,yb,W-12,40); ctx.strokeRect(6,yb,W-12,40);
-    const line=chat.lines[chat.idx];
-    let txt=line.t.substring(0,chat.pos);
-    if(line.g && chat.pos>2 && chat.pos<line.t.length && Math.random()<.12){
-      txt=txt.slice(0,-1)+['#','%','?','!','&'][Math.floor(Math.random()*5)];
+  // DIALOGUE BOX (undertale style)
+  if(mode==='chat' && chat){
+    const bx=12, by=H-92, bw=W-24, bh=80;
+    C.fillStyle='rgba(0,0,0,0.92)'; C.strokeStyle=P.white; C.lineWidth=2;
+    C.fillRect(bx,by,bw,bh); C.strokeRect(bx,by,bw,bh);
+    // inner corners detail
+    C.fillStyle=P.white; C.fillRect(bx+4,by+4,4,4); C.fillRect(bx+bw-8,by+4,4,4); C.fillRect(bx+4,by+bh-8,4,4); C.fillRect(bx+bw-8,by+bh-8,4,4);
+
+    // name tag
+    C.fillStyle='rgba(0,0,0,0.95)'; C.strokeStyle=P.white; C.lineWidth=1;
+    const nameW = C.measureText(chat.who).width + 12;
+    C.fillRect(bx+12,by-10,nameW,18); C.strokeRect(bx+12,by-10,nameW,18);
+    C.fillStyle= chat.face==='stalker'?P.redeye:(chat.face==='milo'?P.milo:(chat.face==='janitor'?P.janitor:P.white));
+    C.font='10px monospace'; C.textBaseline='middle'; C.fillText(chat.who,bx+18,by-1); C.textBaseline='top';
+
+    // portrait box
+    C.fillStyle='rgba(0,0,0,.6)'; C.strokeStyle=P.gray; C.lineWidth=1;
+    C.fillRect(bx+8,by+12,60,60); C.strokeRect(bx+8,by+12,60,60);
+    drawFace(chat.lines[chat.idx].f||chat.face, bx+10, by+14, 56);
+
+    // text
+    const line = chat.lines[chat.idx];
+    let txt = line.t.substring(0,chat.pos);
+    // glitch char replacement for spooky lines
+    if(line.t.startsWith('*') && chat.pos>3 && chat.pos<line.t.length && Math.random()<.1){
+      const arr=txt.split(''); arr[arr.length-1]=['#','%','?','!','&'][Math.floor(Math.random()*5)]; txt=arr.join('');
       shake=Math.max(shake,1);
     }
-    ctx.fillStyle=C.gray; ctx.font='9px monospace'; ctx.textBaseline='top';
-    ctx.fillText(chat.who+':',10,yb+4);
-    ctx.fillStyle=C.white; ctx.fillText(txt,10,yb+16);
-    if(chat.pos>=line.t.length && Math.floor(tick/20)%2===0){
-      ctx.fillStyle=C.white; ctx.fillText('▼',W-18,yb+30);
+    C.fillStyle= line.t.startsWith('*') ? P.gray : P.white;
+    C.font='11px monospace';
+    // wrap text roughly (simple)
+    const tx=bx+76, ty=by+18;
+    const words=txt.split(''); let lineStr='', row=0;
+    for(let i=0;i<words.length;i++){
+      lineStr+=words[i];
+      if(C.measureText(lineStr).width > bw-90 && words[i]===' '){
+        C.fillText(lineStr,tx,ty+row*14); lineStr=''; row++;
+      }
+    }
+    C.fillText(lineStr,tx,ty+row*14);
+
+    // arrow
+    if(chat.pos>=line.t.length && Math.floor(tick/25)%2===0){
+      C.fillStyle=P.white; C.fillText('▼',bx+bw-18,by+bh-14);
     }
   }
 
-  // UI: inventory
-  ctx.fillStyle='rgba(0,0,0,.5)'; ctx.fillRect(4,4,90,14);
-  ctx.fillStyle=C.gray; ctx.font='8px monospace'; ctx.textBaseline='top';
-  ctx.fillText('POCKET:',7,6);
-  inv.forEach((it,i)=>{ ctx.fillStyle=it.col; ctx.fillRect(48+i*12,5,8,10); });
-
-  // UI: Touch hints
-  if(joy.on || 'ontouchstart' in window){
-    ctx.globalAlpha=0.2;
-    ctx.strokeStyle=C.white; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(60,225,20,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle=C.white; ctx.beginPath(); ctx.arc(60+joy.dx,225+joy.dy,8,0,Math.PI*2); ctx.fill();
-    ctx.strokeStyle='#fb7185'; ctx.beginPath(); ctx.arc(420,225,16,0,Math.PI*2); ctx.stroke();
-    ctx.fillStyle='#fb7185'; ctx.font='10px sans-serif'; ctx.textAlign='center'; ctx.textBaseline='middle';
-    ctx.fillText('A',420,225); ctx.textAlign='left';
-    ctx.globalAlpha=1;
+  // HUD: pocket / stamina
+  C.fillStyle='rgba(0,0,0,.5)'; C.fillRect(8,8,100,14);
+  C.fillStyle=P.gray; C.font='8px monospace'; C.textBaseline='top'; C.fillText('POCKET:',12,10);
+  inv.forEach((it,i)=>{ C.fillStyle=it.col; C.fillRect(54+i*12,9,8,10); });
+  // stamina bar if running
+  if(player.run || player.stam<STAM_MAX){
+    C.fillStyle='rgba(0,0,0,.5)'; C.fillRect(8,24,60,6);
+    C.fillStyle=player.stam<30?P.redeye:'#22c55e'; C.fillRect(10,26,(56)*(player.stam/STAM_MAX),3);
   }
 
-  // death tint if low on sanity
+  // touch controls hint
+  if(Joy.on || 'ontouchstart' in window){
+    C.globalAlpha=0.25;
+    C.strokeStyle=P.white; C.lineWidth=1; C.beginPath(); C.arc(60,230,22,0,Math.PI*2); C.stroke();
+    C.fillStyle=P.white; C.beginPath(); C.arc(60+Joy.dx,230+Joy.dy,8,0,Math.PI*2); C.fill();
+    // A btn
+    C.strokeStyle='#fb7185'; C.beginPath(); C.arc(410,215,16,0,Math.PI*2); C.stroke();
+    C.fillStyle='#fb7185'; C.font='12px sans-serif'; C.textAlign='center'; C.textBaseline='middle'; C.fillText('A',410,215);
+    // B btn (run)
+    C.strokeStyle='#60a5fa'; C.beginPath(); C.arc(440,245,14,0,Math.PI*2); C.stroke();
+    C.fillStyle='#60a5fa'; C.fillText('B',440,245);
+    C.globalAlpha=1; C.textAlign='left'; C.textBaseline='top';
+  }
+
+  // stalker proximity vignette tint
   if(area===2 && stalker.on){
     const dd=Math.hypot(player.x-stalker.x,player.y-stalker.y);
-    if(dd<60){ ctx.fillStyle=`rgba(180,20,20,${1-dd/60})`; ctx.fillRect(0,0,W,H); }
+    if(dd<90){ C.fillStyle=`rgba(120,20,20,${1-dd/90})`; C.fillRect(0,0,W,H); }
   }
 }
 
-function drawPlayer(x,y){
-  ctx.save(); ctx.translate(Math.floor(x), Math.floor(y));
-  const bob=player.moving?Math.sin(player.step*0.5)*2:Math.sin(tick*0.06)*0.8;
-  const breathe=(!player.moving&&player.idle>90)?Math.sin(tick*0.2)*1.2:0;
-  const dir=player.dir;
+function drawPlayerSprite(x,y){
+  C.save(); C.translate(Math.floor(x),Math.floor(y));
+  const bob=player.moving?Math.sin(player.step*0.55)*2.2:Math.sin(tick*0.06)*0.7;
+  const breathe=(!player.moving&&player.idle>90)?Math.sin(tick*0.18)*1.0:0;
+  const face=player.dir;
+  const scared = (area===2 && stalker.on && Math.hypot(player.x-stalker.x,player.y-stalker.y)<70);
 
-  // shadow
-  ctx.fillStyle='rgba(0,0,0,.35)'; ctx.fillRect(-5,7,10,3);
+  C.fillStyle='rgba(0,0,0,.4)'; C.fillRect(-5,8,10,3); // shadow
 
   // legs
-  ctx.fillStyle=C.pants;
+  C.fillStyle=P.pants;
   if(player.moving){
-    const s=Math.sin(player.step*0.5);
-    ctx.fillRect(-4, 3+Math.max(0,s), 3, 4-Math.abs(s)*.8);
-    ctx.fillRect(1, 3+Math.max(0,-s), 3, 4-Math.abs(s)*.8);
+    const s=Math.sin(player.step*0.55);
+    C.fillRect(-4.5, 3.5+Math.max(0,s), 3, 4.5-Math.abs(s)*0.6);
+    C.fillRect(1.5, 3.5+Math.max(0,-s), 3, 4.5-Math.abs(s)*0.6);
   }else if(player.idle>120){
-    // fidget shift
     const sh=Math.sin(tick*0.15)*2;
-    ctx.fillRect(-4+sh,3,3,4); ctx.fillRect(1-sh,3,3,4);
+    C.fillRect(-4.5+sh,3.5,3,4.5); C.fillRect(1.5-sh,3.5,3,4.5);
+    // scratch head
+    if(tick%240<120){ C.fillStyle=P.skin; C.fillRect(face===1?5:-7, -5+bob+breathe, 2, 3); }
   }else{
-    ctx.fillRect(-4,3,3,4); ctx.fillRect(1,3,3,4);
+    C.fillRect(-4.5,3.5,3,4.5); C.fillRect(1.5,3.5,3,4.5);
   }
 
-  // body
-  ctx.fillStyle=C.player; ctx.fillRect(-5,-2+bob+breathe,10,7);
+  // body (hoodie)
+  C.fillStyle=player.run?'#3b62d6':P.player; // darken when running? maybe not needed
+  C.fillStyle=P.player;
+  C.fillRect(-5.5, -1+bob+breathe, 11, 8);
+  // pocket
+  C.fillStyle='#3355cc'; C.fillRect(2, 0+bob+breathe, 3, 3);
 
-  // arm sway / fidget
-  ctx.fillStyle='#4a7de4';
-  if(player.moving){
-    const a=Math.sin(player.step*0.5)*2.5;
-    ctx.fillRect(-7-a, -1+bob+breathe, 2, 5);
-    ctx.fillRect(5+a, -1+bob+breathe, 2, 5);
-  }else if(player.idle>90){
-    // scratch head / look around
-    const look=Math.sin(tick*0.08)*4;
-    ctx.fillRect(-7+look, -1+bob+breathe, 2, 5);
-    ctx.fillRect(5-look, -1+bob+breathe, 2, 5);
-    if(player.idle>150 && tick%180<90){
-      // hand on head
-      ctx.fillStyle=C.skin; ctx.fillRect(dir===1?5:-6, -7+bob+breathe, 2, 3);
-    }
-  }else{
-    ctx.fillRect(-7, -1+bob+breathe, 2, 5);
-    ctx.fillRect(5, -1+bob+breathe, 2, 5);
-  }
+  // arms
+  C.fillStyle='#3b62d6';
+  const arm = player.moving ? Math.sin(player.step*0.55)*3 : Math.sin(tick*0.06)*0.8;
+  C.fillRect(-7-arm, -0.5+bob+breathe, 2.5, 5.5);
+  C.fillRect(4.5+arm, -0.5+bob+breathe, 2.5, 5.5);
 
   // head
-  ctx.fillStyle=C.skin; ctx.fillRect(-4.5,-7+bob+breathe,9,6);
+  C.fillStyle=P.skin; C.fillRect(-5, -7.5+bob+breathe, 10, 7);
+  // hood over head
+  C.fillStyle=P.player; C.fillRect(-6, -10+bob+breathe, 12, 4);
+  // hair sticking out
+  C.fillStyle=P.hair; C.fillRect(-5.5, -11+bob+breathe, 11, 3);
+  if(face===1) C.fillRect(3, -11+bob+breathe, 3, 5);
+  else C.fillRect(-6, -11+bob+breathe, 3, 5);
 
-  // hair (messy)
-  ctx.fillStyle=C.hair;
-  ctx.fillRect(-5,-9+bob+breathe,10,3);
-  // bangs based on direction
-  if(dir===1){
-    ctx.fillRect(2,-9+bob+breathe,3,4);
+  // eyes
+  C.fillStyle='#111';
+  if(scared){
+    // wide eyes
+    C.fillStyle='#fff'; C.fillRect(face===1?0:-2, -7+bob+breathe, 3, 3.5);
+    C.fillStyle='#111'; C.fillRect(face===1?0.5:-1.5, -6.5+bob+breathe, 2, 3);
   }else{
-    ctx.fillRect(-5,-9+bob+breathe,3,4);
+    C.fillRect(face===1?0.5:-2, -5.5+bob+breathe, 2, 2);
   }
 
-  // eyes (wide if stalker near)
-  ctx.fillStyle='#111';
-  let eyeOff=(stalker.on && Math.hypot(player.x-stalker.x,player.y-stalker.y)<60)?1:0;
-  if(dir===1){
-    ctx.fillRect(1,-5.5+bob+breathe+eyeOff,1.5,2);
-  }else{
-    ctx.fillRect(-2.5,-5.5+bob+breathe+eyeOff,1.5,2);
-  }
+  // mouth
+  C.fillStyle='#5c1a1a';
+  if(scared) C.fillRect(-1.5, -2+bob+breathe, 3, 2.5); // open
+  else if(player.idle>90 && !player.moving && Math.sin(tick*0.05)>0) C.fillRect(-1.5, -2+bob+breathe, 3, 1.2);
+  else C.fillRect(-1, -2+bob+breathe, 2, 1);
 
-  // mouth (small o if idle too long/scared)
-  ctx.fillStyle='#7f1d1d';
-  if(stalker.on && Math.hypot(player.x-stalker.x,player.y-stalker.y)<80){
-    ctx.fillRect(-1,-2+bob+breathe,2,2); // open mouth
-  }else if(player.idle>60 && !player.moving){
-    if(Math.sin(tick*0.05)>0) ctx.fillRect(-1,-2+bob+breathe,2,1);
-  }
+  // sweat drop if scared
+  if(scared){ C.fillStyle=P.milo; C.fillRect(face===1?4:-5, -9+bob+breathe, 1.5, 2.5); }
 
-  ctx.restore();
+  C.restore();
 }
 
 function drawTitle(){
-  const t=tick;
-  const b=Math.sin(t*0.08)*3;
-  ctx.fillStyle='#0a0a0f'; ctx.fillRect(0,0,W,H);
-  // noise
-  for(let i=0;i<40;i++){
-    ctx.fillStyle=`rgba(255,255,255,${Math.random()*0.04})`;
-    ctx.fillRect(Math.random()*W,Math.random()*H,2,2);
+  C.fillStyle=P.black; C.fillRect(0,0,W,H);
+  // static noise
+  for(let i=0;i<60;i++){
+    C.fillStyle=`rgba(255,255,255,${Math.random()*0.04})`;
+    C.fillRect(Math.random()*W,Math.random()*H,2,2);
   }
-  ctx.fillStyle=C.white; ctx.font='22px monospace'; ctx.textAlign='center'; ctx.textBaseline='middle';
-  ctx.fillText('DEAD_HALL.EXE',W/2,80+b);
-  ctx.fillStyle=C.gray; ctx.font='10px monospace';
-  ctx.fillText('a game made at 3am by someone with too much caffeine',W/2,110);
-  ctx.fillText('and not enough sleep',W/2,122);
-  if(Math.floor(t/35)%2===0){
-    ctx.fillStyle='#fb7185'; ctx.fillText('[ SPACE / TAP ] to start',W/2,160);
+  const bob=Math.sin(tick*0.07)*3;
+  C.fillStyle=P.white; C.font='24px monospace'; C.textAlign='center'; C.textBaseline='middle';
+  C.fillText('DEAD_HALL.EXE',W/2,85+bob);
+  C.fillStyle=P.gray; C.font='10px monospace';
+  C.fillText('made with insomnia and energy drinks',W/2,118);
+  C.fillText('move: WASD / arrows    A: interact    B: run',W/2,132);
+  if(Math.floor(tick/35)%2===0){
+    C.fillStyle='#fb7185'; C.fillText('PRESS SPACE / TAP A TO START',W/2,165);
   }
-  // tiny player sprite dancing
-  ctx.save(); ctx.translate(W/2,190);
-  drawPlayer(0,0); player.idle=200; player.step=tick;
-  ctx.restore(); player.idle=0; player.step=0;
-  ctx.textAlign='left';
+  // tiny player idle
+  C.save(); C.translate(W/2,195); drawPlayerSprite(0,0); player.idle=200; player.step=tick; C.restore();
+  player.idle=0; player.step=0; C.textAlign='left';
 }
 
-function drawEnd(title,sub){
-  ctx.fillStyle='#0a0a0f'; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle=C.white; ctx.font='16px monospace'; ctx.textAlign='center';
-  ctx.fillText('THE END - '+title,W/2,100);
-  ctx.fillStyle=C.gray; ctx.font='10px monospace';
-  ctx.fillText(sub,W/2,124);
+function drawWin(title,sub){
+  C.fillStyle=P.black; C.fillRect(0,0,W,H);
+  // sit still
+  C.fillStyle=P.white; C.font='16px monospace'; C.textAlign='center'; C.textBaseline='middle';
+  C.fillText('THE END - '+title,W/2,100);
+  C.fillStyle=P.gray; C.font='10px monospace';
+  C.fillText(sub,W/2,126);
   if(Math.floor(tick/35)%2===0){
-    ctx.fillStyle='#fb7185'; ctx.fillText('press SPACE / A to restart',W/2,160);
+    C.fillStyle=P.redeye; C.fillText('press SPACE / A to restart',W/2,160);
   }
-  ctx.textAlign='left';
+  C.textAlign='left';
 }
 
 function drawDead(){
-  ctx.fillStyle='rgba(80,10,10,0.6)'; ctx.fillRect(0,0,W,H);
-  ctx.fillStyle='#fff'; ctx.font='12px monospace'; ctx.textAlign='center';
-  ctx.fillText('IT GOT YOU.',W/2,H/2-10);
-  ctx.fillStyle='#aaa'; ctx.font='9px monospace';
-  ctx.fillText('press SPACE / A to try again',W/2,H/2+10);
-  ctx.textAlign='left';
-  // fake glitch lines
-  for(let i=0;i<5;i++){
-    ctx.fillStyle=`rgba(0,0,0,${Math.random()})`;
-    ctx.fillRect(0,Math.random()*H,W,Math.random()*6);
+  C.fillStyle='rgba(60,10,10,0.65)'; C.fillRect(0,0,W,H);
+  // glitch bars
+  for(let i=0;i<8;i++){
+    C.fillStyle=`rgba(0,0,0,${Math.random()})`;
+    C.fillRect(0,Math.random()*H,W,Math.random()*8+2);
   }
+  C.fillStyle='#fff'; C.font='14px monospace'; C.textAlign='center'; C.textBaseline='middle';
+  C.fillText('IT CAUGHT YOU.',W/2,H/2-10);
+  C.fillStyle=P.gray; C.font='9px monospace';
+  C.fillText('try again...',W/2,H/2+10);
+  C.textAlign='left';
 }
 
+// ==============================================================
+// LOOP
+// ==============================================================
 function loop(){ update(); draw(); requestAnimationFrame(loop); }
 loop();
 </script>
