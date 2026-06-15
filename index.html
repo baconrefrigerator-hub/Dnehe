@@ -1,649 +1,380 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Guts & Blackpowder — Wiki</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --bg-dark: #0f0e0e;
-            --bg-panel: #1a1818;
-            --accent-red: #8b2635;
-            --accent-gold: #c5a059;
-            --text: #e2d8d0;
-            --text-dim: #9e948a;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Inter', sans-serif;
-            background-color: var(--bg-dark);
-            color: var(--text);
-            line-height: 1.6;
-            overflow-x: hidden;
-        }
-
-        h1, h2, h3, .brand {
-            font-family: 'Cinzel', serif;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        nav {
-            position: fixed;
-            top: 0;
-            width: 100%;
-            background: rgba(15, 14, 14, 0.95);
-            backdrop-filter: blur(10px);
-            border-bottom: 1px solid #2a2525;
-            z-index: 1000;
-            padding: 1rem 2rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .brand {
-            font-size: 1.4rem;
-            color: var(--accent-gold);
-            font-weight: 700;
-        }
-
-        .nav-links {
-            display: flex;
-            gap: 2rem;
-            list-style: none;
-        }
-
-        .nav-links a {
-            color: var(--text-dim);
-            text-decoration: none;
-            font-weight: 500;
-            transition: color 0.3s;
-            font-size: 0.9rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-        }
-
-        .nav-links a:hover {
-            color: var(--accent-gold);
-        }
-
-        .menu-toggle {
-            display: none;
-            font-size: 1.5rem;
-            cursor: pointer;
-            color: var(--accent-gold);
-        }
-
-        .hero {
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            padding: 2rem;
-            position: relative;
-            background: radial-gradient(circle at center, #1f1b1b 0%, #0f0e0e 100%), url('https://placehold.co/1920x1080/0f0e0e/c5a059?text=') center/cover no-repeat;
-            overflow: hidden;
-        }
-
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100" opacity="0.03"><rect fill="%23c5a059" width="100" height="100"/></svg>');
-            opacity: 0.3;
-            pointer-events: none;
-        }
-
-        .hero h1 {
-            font-size: clamp(2.5rem, 8vw, 5rem);
-            color: var(--accent-gold);
-            margin-bottom: 1rem;
-            text-shadow: 0 4px 20px rgba(0,0,0,0.8);
-            animation: fadeUp 1s ease-out;
-            z-index: 1;
-        }
-
-        .hero p {
-            font-size: 1.2rem;
-            color: var(--text-dim);
-            max-width: 600px;
-            margin-bottom: 2rem;
-            animation: fadeUp 1s ease-out 0.2s both;
-            z-index: 1;
-        }
-
-        .btn {
-            display: inline-block;
-            padding: 0.9rem 2rem;
-            background: var(--accent-red);
-            color: white;
-            text-decoration: none;
-            font-weight: 600;
-            border: 1px solid #a03040;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            animation: fadeUp 1s ease-out 0.4s both;
-            z-index: 1;
-        }
-
-        .btn:hover {
-            background: #a03040;
-            transform: translateY(-2px);
-            box-shadow: 0 5px 20px rgba(139, 38, 53, 0.4);
-        }
-
-        .scroll-hint {
-            position: absolute;
-            bottom: 2rem;
-            color: var(--text-dim);
-            animation: bounce 2s infinite;
-            font-size: 1.5rem;
-            z-index: 1;
-        }
-
-        section {
-            padding: 5rem 2rem;
-            max-width: 1100px;
-            margin: 0 auto;
-        }
-
-        .section-title {
-            font-size: 2rem;
-            color: var(--accent-gold);
-            margin-bottom: 1rem;
-            text-align: center;
-        }
-
-        .section-sub {
-            text-align: center;
-            color: var(--text-dim);
-            margin-bottom: 3rem;
-            font-size: 1rem;
-        }
-
-        .about-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 3rem;
-            align-items: center;
-        }
-
-        .about-text {
-            color: var(--text-dim);
-        }
-
-        .about-text strong {
-            color: var(--text);
-        }
-
-        .feature-box {
-            background: var(--bg-panel);
-            border-left: 4px solid var(--accent-red);
-            padding: 1.5rem;
-            margin-top: 1.5rem;
-            border-radius: 0 4px 4px 0;
-        }
-
-        .feature-box h3 {
-            color: var(--accent-gold);
-            margin-bottom: 0.5rem;
-            font-size: 1.1rem;
-        }
-
-        .about-image-wrap {
-            position: relative;
-            overflow: hidden;
-            border: 1px solid #2a2525;
-            background: linear-gradient(135deg, #1a1818, #2a2222);
-        }
-
-        .about-image-wrap::after {
-            content: '';
-            position: absolute;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: repeating-linear-gradient(
-                45deg,
-                transparent,
-                transparent 10px,
-                rgba(197,160,89,0.03) 10px,
-                rgba(197,160,89,0.03) 20px
-            );
-            pointer-events: none;
-        }
-
-        .about-img {
-            width: 100%;
-            height: 300px;
-            object-fit: cover;
-            display: block;
-            filter: sepia(0.4) contrast(1.1) brightness(0.9);
-        }
-
-        .classes-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .class-card {
-            background: var(--bg-panel);
-            border: 1px solid #2a2525;
-            padding: 2rem;
-            text-align: center;
-            transition: transform 0.3s, border-color 0.3s;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .class-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; width: 100%; height: 3px;
-            background: var(--accent-red);
-            transform: scaleX(0);
-            transition: transform 0.3s;
-        }
-
-        .class-card:hover {
-            transform: translateY(-5px);
-            border-color: var(--accent-gold);
-        }
-
-        .class-card:hover::before {
-            transform: scaleX(1);
-        }
-
-        .class-icon {
-            font-size: 2.5rem;
-            color: var(--accent-gold);
-            margin-bottom: 1rem;
-        }
-
-        .class-card h3 {
-            color: var(--text);
-            margin-bottom: 0.5rem;
-            font-size: 1.2rem;
-        }
-
-        .class-card p {
-            color: var(--text-dim);
-            font-size: 0.95rem;
-        }
-
-        .gameplay-container {
-            display: flex;
-            flex-direction: column;
-            gap: 2rem;
-        }
-
-        .mechanic {
-            display: grid;
-            grid-template-columns: auto 1fr;
-            gap: 1.5rem;
-            background: var(--bg-panel);
-            padding: 1.5rem;
-            border: 1px solid #2a2525;
-            align-items: start;
-        }
-
-        .mechanic-icon {
-            font-size: 2rem;
-            color: var(--accent-red);
-            width: 50px;
-            text-align: center;
-        }
-
-        .mechanic h3 {
-            color: var(--accent-gold);
-            margin-bottom: 0.3rem;
-            font-size: 1.1rem;
-        }
-
-        .mechanic p {
-            color: var(--text-dim);
-            font-size: 0.95rem;
-        }
-
-        .maps-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1.5rem;
-        }
-
-        .map-card {
-            position: relative;
-            height: 220px;
-            background: #151414;
-            border: 1px solid #2a2525;
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            padding: 1.5rem;
-            transition: border-color 0.3s;
-        }
-
-        .map-card:hover {
-            border-color: var(--accent-red);
-        }
-
-        .map-card h3 {
-            color: var(--text);
-            font-size: 1.3rem;
-            z-index: 2;
-        }
-
-        .map-card span {
-            color: var(--text-dim);
-            font-size: 0.9rem;
-            z-index: 2;
-        }
-
-        .map-card::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; bottom: 0;
-            background: linear-gradient(to top, rgba(15,14,14,0.95) 0%, rgba(15,14,14,0.4) 100%);
-            z-index: 1;
-        }
-
-        .map-bg-img {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            opacity: 0.5;
-            z-index: 0;
-            transition: opacity 0.3s, transform 0.5s;
-        }
-
-        .map-card:hover .map-bg-img {
-            opacity: 0.7;
-            transform: scale(1.05);
-        }
-
-        footer {
-            text-align: center;
-            padding: 3rem 2rem;
-            border-top: 1px solid #2a2525;
-            color: var(--text-dim);
-            font-size: 0.9rem;
-        }
-
-        @keyframes fadeUp {
-            from { opacity: 0; transform: translateY(30px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        @keyframes bounce {
-            0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-            40% { transform: translateY(-10px); }
-            60% { transform: translateY(-5px); }
-        }
-
-        .reveal {
-            opacity: 0;
-            transform: translateY(40px);
-            transition: all 0.8s ease-out;
-        }
-
-        .reveal.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        @media (max-width: 768px) {
-            .nav-links {
-                display: none;
-                position: absolute;
-                top: 100%;
-                right: 0;
-                background: var(--bg-dark);
-                flex-direction: column;
-                width: 200px;
-                border-left: 1px solid #2a2525;
-                border-bottom: 1px solid #2a2525;
-                padding: 1rem;
-            }
-
-            .nav-links.active {
-                display: flex;
-            }
-
-            .menu-toggle {
-                display: block;
-            }
-
-            .about-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .mechanic {
-                grid-template-columns: 1fr;
-                text-align: center;
-            }
-
-            .mechanic-icon {
-                width: 100%;
-            }
-        }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>snack run !!</title>
+<!-- hey!! i made this late at night. hope it makes u smile -->
+<style>
+  body {
+    margin: 0;
+    background: #2a2a35;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Courier New', Courier, monospace;
+    color: #fb7185;
+  }
+  #gameBox {
+    position: relative;
+    box-shadow: 0 0 0 4px #1e1e24, 0 0 24px rgba(0,0,0,0.35);
+  }
+  canvas {
+    display: block;
+    width: 640px;
+    height: 480px;
+    image-rendering: pixelated; /* crunchy!! */
+    background: #f7f5e6;
+  }
+  .note {
+    margin-top: 14px;
+    font-size: 13px;
+    color: #86efac;
+  }
+</style>
 </head>
 <body>
+<div id="gameBox">
+  <canvas id="c" width="160" height="120"></canvas>
+</div>
+<div class="note">move: WASD / arrows &nbsp;•&nbsp; talk / accept: SPACE</div>
 
-    <nav>
-        <div class="brand"><i class="fas fa-cube"></i> Guts & Blackpowder</div>
-        <ul class="nav-links" id="navLinks">
-            <li><a href="#about">About</a></li>
-            <li><a href="#classes">Classes</a></li>
-            <li><a href="#gameplay">Gameplay</a></li>
-            <li><a href="#maps">Maps</a></li>
-        </ul>
-        <div class="menu-toggle" id="menuToggle"><i class="fas fa-bars"></i></div>
-    </nav>
+<script>
+const cv = document.getElementById('c');
+const ctx = cv.getContext('2d');
+ctx.imageSmoothingEnabled = false;
 
-    <header class="hero">
-        <h1>Guts & Blackpowder</h1>
-        <p>Hold the line. Load your musket. Pray the cap doesn't jam. A Roblox survival-horror experience set in the Napoleonic era.</p>
-        <a href="#about" class="btn">Enter the Trenches</a>
-        <div class="scroll-hint"><i class="fas fa-chevron-down"></i></div>
-    </header>
+// ---- palette ----
+const P = {
+  bg: '#f7f5e6',
+  road: '#e8e4d0',
+  grass: '#86efac',
+  dark: '#1e1e24',
+  pink: '#fb7185',
+  skin: '#fdba74',
+  wood: '#d97706',
+  water: '#60a5fa',
+  egg: '#fcd34d',
+  white: '#ffffff'
+};
 
-    <section id="about">
-        <h2 class="section-title reveal">About the Game</h2>
-        <p class="section-sub reveal">Survival is not guaranteed. Cooperation is mandatory.</p>
-        
-        <div class="about-grid reveal">
-            <div class="about-text">
-                <p><strong>Guts & Blackpowder (G&B)</strong> is a multiplayer survival-horror game on Roblox that drops players into the mud and blood of the early 19th century. You and your regiment must survive relentless waves of the infected using period-accurate weaponry, tactics, and sheer willpower.</p>
-                
-                <div class="feature-box">
-                    <h3><i class="fas fa-skull"></i> Permadeath</h3>
-                    <p>One bite is all it takes. If you fall, you join the horde. There are no respawns until the round ends—every shot counts, every decision matters.</p>
-                </div>
-                
-                <div class="feature-box">
-                    <h3><i class="fas fa-users"></i> Regiment-Based Play</h3>
-                    <p>Fight alongside friends as line infantry, protect your officer, or keep morale high as a musician. Lone wolves die fast in G&B.</p>
-                </div>
-            </div>
-            <div class="about-image-wrap">
-                <img src="https://placehold.co/800x600/1a1818/c5a059?text=Napoleonic+Battlefield" alt="Napoleonic Battlefield" class="about-img">
-            </div>
-        </div>
-    </section>
+// ---- state ----
+let mode = 'title'; // title, game, chat, done
+let frame = 0;
+let shake = 0;
+let chat = null;   // {who, lines, idx, pos}
+let held = null;   // whats in ur pocket
+let t = 0;         // timer
 
-    <section id="classes">
-        <h2 class="section-title reveal">Classes & Roles</h2>
-        <p class="section-sub reveal">Every soldier has a place in the line.</p>
-        
-        <div class="classes-grid">
-            <div class="class-card reveal">
-                <div class="class-icon"><i class="fas fa-user"></i></div>
-                <h3>Line Infantry</h3>
-                <p>The backbone of any regiment. Armed with muskets and bayonets, they form firing lines and hold chokepoints against the undead tide.</p>
-            </div>
-            <div class="class-card reveal">
-                <div class="class-icon"><i class="fas fa-star"></i></div>
-                <h3>Officer</h3>
-                <p>Leads the charge and boosts morale. Equipped with a sabre and a spyglass, the officer commands troops and organizes defenses.</p>
-            </div>
-            <div class="class-card reveal">
-                <div class="class-icon"><i class="fas fa-music"></i></div>
-                <h3>Musician</h3>
-                <p>Drummers and fifers who provide buffs to nearby allies. Their music can be the difference between a rout and a disciplined retreat.</p>
-            </div>
-            <div class="class-card reveal">
-                <div class="class-icon"><i class="fas fa-medkit"></i></div>
-                <h3>Surgeon</h3>
-                <p>The only hope for the wounded. Surgeons can revive incapacitated players—if they can reach them before the horde does.</p>
-            </div>
-            <div class="class-card reveal">
-                <div class="class-icon"><i class="fas fa-fire"></i></div>
-                <h3>Sapper</h3>
-                <p>Engineers who construct barricades, spikes, and cover. A good sapper turns a hopeless position into a fortress.</p>
-            </div>
-            <div class="class-card reveal">
-                <div class="class-icon"><i class="fas fa-horse"></i></div>
-                <h3>Cavalry</h3>
-                <p>Fast-moving shock troops. They can break through zombie hordes with sabre charges, but are vulnerable when dismounted.</p>
-            </div>
-        </div>
-    </section>
+// ---- input (single-press + held) ----
+const keys = {};
+const hit = {};
+window.addEventListener('keydown', e => {
+  if (!keys[e.code]) hit[e.code] = true;
+  keys[e.code] = true;
+  if (e.code === 'Space') e.preventDefault();
+});
+window.addEventListener('keyup', e => keys[e.code] = false);
 
-    <section id="gameplay">
-        <h2 class="section-title reveal">Core Mechanics</h2>
-        <p class="section-sub reveal">Muskets, mud, and monstrosities.</p>
-        
-        <div class="gameplay-container">
-            <div class="mechanic reveal">
-                <div class="mechanic-icon"><i class="fas fa-crosshairs"></i></div>
-                <div>
-                    <h3>Blackpowder Combat</h3>
-                    <p>Firearms are slow, inaccurate, and deadly. Players must stand still to fire effectively, coordinate volleys, and switch to bayonets when the enemy closes the distance. Reloading under pressure is a skill in itself.</p>
-                </div>
-            </div>
-            
-            <div class="mechanic reveal">
-                <div class="mechanic-icon"><i class="fas fa-shield-alt"></i></div>
-                <div>
-                    <h3>Barricades & Fortifications</h3>
-                    <p>Sappers can place wooden barricades and spike traps. These delay the infected but can be broken—forcing players to adapt and fallback to secondary positions.</p>
-                </div>
-            </div>
-            
-            <div class="mechanic reveal">
-                <div class="mechanic-icon"><i class="fas fa-biohazard"></i></div>
-                <div>
-                    <h3>Infection System</h3>
-                    <p>A single scratch or bite from an infected player or NPC can doom a soldier. Infected players turn against their former comrades, creating paranoia and forcing teams to watch each other closely.</p>
-                </div>
-            </div>
-            
-            <div class="mechanic reveal">
-                <div class="mechanic-icon"><i class="fas fa-flag"></i></div>
-                <div>
-                    <h3>Morale & Voicelines</h3>
-                    <p>Staying near officers and musicians maintains morale, reducing sway and reload penalties. The game features immersive commands, cheers, and screams that add to the chaos.</p>
-                </div>
-            </div>
-        </div>
-    </section>
+// ---- helpers ----
+function box(x, y, w, h, c) {
+  ctx.fillStyle = c;
+  ctx.fillRect(Math.floor(x), Math.floor(y), w, h);
+}
+function collide(ax, ay, aw, ah, bx, by, bw, bh) {
+  return ax < bx+bw && ax+aw > bx && ay < by+bh && ay+ah > by;
+}
 
-    <section id="maps">
-        <h2 class="section-title reveal">Notable Maps</h2>
-        <p class="section-sub reveal">Battlefields soaked in history... and blood.</p>
-        
-        <div class="maps-grid">
-            <div class="map-card reveal">
-                <img src="https://placehold.co/600x400/151414/c5a059?text=Leipzig" alt="Leipzig" class="map-bg-img">
-                <h3>Leipzig</h3>
-                <span>Urban warfare in the city streets. Expect close-quarters fighting and desperate last stands in the churchyard.</span>
-            </div>
-            <div class="map-card reveal">
-                <img src="https://placehold.co/600x400/151414/c5a059?text=San+Sebastian" alt="San Sebastián" class="map-bg-img">
-                <h3>San Sebastián</h3>
-                <span>A coastal fortress under siege. Wide open beaches and tight interiors require adaptive tactics.</span>
-            </div>
-            <div class="map-card reveal">
-                <img src="https://placehold.co/600x400/151414/c5a059?text=Berezina" alt="Berezina" class="map-bg-img">
-                <h3>Berezina</h3>
-                <span>Freezing forests and narrow crossings. The cold is the least of your worries here.</span>
-            </div>
-            <div class="map-card reveal">
-                <img src="https://placehold.co/600x400/151414/c5a059?text=Hougoumont" alt="Hougoumont" class="map-bg-img">
-                <h3>Hougoumont</h3>
-                <span>Defend the famed farmhouse from waves of undead. A classic siege experience.</span>
-            </div>
-            <div class="map-card reveal">
-                <img src="https://placehold.co/600x400/151414/c5a059?text=Tyrolean+Pass" alt="Tyrolean Pass" class="map-bg-img">
-                <h3>Tyrolean Pass</h3>
-                <span>Mountainous terrain with treacherous cliffs. Hold the pass or be overrun.</span>
-            </div>
-            <div class="map-card reveal">
-                <img src="https://placehold.co/600x400/151414/c5a059?text=Quatre+Bras" alt="Quatre Bras" class="map-bg-img">
-                <h3>Quatre Bras</h3>
-                <span>A crossroads in Belgium. Open fields favor line formations, but flanking is constant.</span>
-            </div>
-        </div>
-    </section>
+function dust(x, y, col, n) {
+  n = n || 3;
+  for (let i=0;i<n;i++) bits.push({
+    x: x+Math.random()*6, y: y+Math.random()*4,
+    vx: (Math.random()-0.5), vy: (Math.random()-0.5)-0.3,
+    life: 18+Math.random()*10, col: col||P.white
+  });
+}
+function poof(x, y) {
+  for (let i=0;i<14;i++) bits.push({
+    x, y,
+    vx: (Math.random()-0.5)*3.5, vy: (Math.random()-0.5)*3.5,
+    life: 28,
+    col: [P.pink, P.egg, P.grass, P.white][Math.floor(Math.random()*4)]
+  });
+}
 
-    <footer>
-        <p>Guts & Blackpowder Wiki</p>
-    </footer>
+// ---- player ----
+const dude = {x:76, y:105, w:8, h:9, vx:0, vy:0, face:1, step:0};
 
-    <script>
-        const menuToggle = document.getElementById('menuToggle');
-        const navLinks = document.getElementById('navLinks');
-        
-        menuToggle.addEventListener('click', () => {
-            navLinks.classList.toggle('active');
-        });
+let things = [];
+let bits = [];
 
-        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
-            anchor.addEventListener('click', function(e) {
-                e.preventDefault();
-                navLinks.classList.remove('active');
-                document.querySelector(this.getAttribute('href')).scrollIntoView({
-                    behavior: 'smooth'
-                });
-            });
-        });
+function start() {
+  mode = 'game';
+  held = null;
+  t = 0;
+  frame = 0;
+  bits = [];
+  dude.x = 76; dude.y = 106;
+  dude.step = 0;
 
-        const revealElements = document.querySelectorAll('.reveal');
-        
-        const revealOnScroll = () => {
-            const windowHeight = window.innerHeight;
-            const elementVisible = 100;
-            
-            revealElements.forEach(reveal => {
-                const elementTop = reveal.getBoundingClientRect().top;
-                if (elementTop < windowHeight - elementVisible) {
-                    reveal.classList.add('active');
-                }
-            });
-        };
-        
-        window.addEventListener('scroll', revealOnScroll);
-        revealOnScroll();
-    </script>
+  things = [
+    {k:'house', x:56, y:82, w:48, h:28},
+    {k:'store', x:56, y:8, w:48, h:28},
+    {k:'pond', x:14, y:40, w:30, h:18},
+    {k:'rock', x:130, y:62, w:6, h:5},
+    {k:'rock', x:28, y:72, w:5, h:4},
+    {k:'flower', x:44, y:52, f:0},
+    {k:'flower', x:112, y:58, f:2},
+    {k:'flower', x:126, y:88, f:4},
+    {k:'mom', x:76, y:88, w:8, h:10, lines:["hey kiddo!!","we r out of EGGS...","could u grab one??","store is up north!!"], tx:0},
+    {k:'clerk', x:76, y:20, w:8, h:10, lines:["oh! hi!!","one EGG??","here ya go ^_^"], shop:true, tx:0},
+    {k:'squirrel', x:122, y:70, w:6, h:5, lines:["*panicked screech*"], tx:0, run:true},
+    {k:'sign', x:128, y:12, w:4, h:6, lines:["-> store"]},
+    {k:'mailbox', x:120, y:94, w:4, h:8, lines:["no mail today.."]}
+  ];
+}
+
+function tick() {
+  frame++;
+  if (shake) shake--;
+
+  // ---- TITLE ----
+  if (mode === 'title') {
+    if (hit.Space) { hit.Space = false; start(); }
+    return;
+  }
+
+  // ---- DONE ----
+  if (mode === 'done') {
+    if (hit.Space) { hit.Space = false; mode = 'title'; }
+    return;
+  }
+
+  // ---- CHAT ----
+  if (mode === 'chat') {
+    if (hit.Space) {
+      hit.Space = false;
+      chat.idx++;
+      chat.pos = 0;
+      if (chat.idx >= chat.lines.length) {
+        mode = 'game';
+        chat = null;
+      }
+    }
+    for (let b of bits) { b.x+=b.vx; b.y+=b.vy; b.life--; }
+    bits = bits.filter(b => b.life > 0);
+    return;
+  }
+
+  // ---- PLAY ----
+  t++;
+  let mx = 0, my = 0;
+  if (keys.ArrowUp || keys.KeyW) my = -0.9;
+  if (keys.ArrowDown || keys.KeyS) my = 0.9;
+  if (keys.ArrowLeft || keys.KeyA) mx = -0.9;
+  if (keys.ArrowRight || keys.KeyD) mx = 0.9;
+  if (mx && my) { mx *= 0.7; my *= 0.7; }
+
+  if (mx) dude.face = mx > 0 ? 1 : -1;
+  if (mx || my) {
+    dude.step++;
+    if (dude.step % 10 === 0) dust(dude.x+3, dude.y+8, P.grass, 2);
+  } else {
+    dude.step = 0;
+  }
+
+  dude.x += mx; dude.y += my;
+  dude.x = Math.max(0, Math.min(152, dude.x));
+  dude.y = Math.max(0, Math.min(111, dude.y));
+
+  // world collision
+  for (let o of things) {
+    if (o.k==='house'||o.k==='store'||o.k==='rock'||o.k==='pond') {
+      if (collide(dude.x,dude.y,dude.w,dude.h,o.x,o.y,o.w,o.h)) {
+        dude.x -= mx; dude.y -= my;
+        if (mx||my) shake = 5;
+      }
+    }
+  }
+
+  // npc animations
+  for (let o of things) {
+    if ('tx' in o) o.tx += 0.08;
+    if (o.k==='squirrel' && o.run) {
+      let dx = dude.x - o.x, dy = dude.y - o.y;
+      if (Math.abs(dx)<26 && Math.abs(dy)<26) {
+        o.x += (dx>0?-0.7:0.7);
+        o.y += (dy>0?-0.2:0.2);
+      }
+    }
+  }
+
+  // interact
+  if (hit.Space) {
+    hit.Space = false;
+    let near = things.find(o => o.lines && collide(dude.x-6,dude.y-6,dude.w+12,dude.h+12,o.x-2,o.y-2,o.w+4,o.h+4));
+    if (near) {
+      if (near.shop && !held) {
+        held = 'EGG';
+        near.lines = ["all out now!!","have a good one~"];
+        poof(dude.x, dude.y);
+      }
+      if (near.k === 'mom' && held) {
+        mode = 'done';
+        return;
+      }
+      mode = 'chat';
+      chat = {who: near, lines: [...near.lines], idx: 0, pos: 0};
+    }
+  }
+
+  // particles
+  for (let b of bits) { b.x+=b.vx; b.y+=b.vy; b.life--; }
+  bits = bits.filter(b => b.life > 0);
+}
+
+// ---- DRAW ----
+function draw() {
+  ctx.save();
+  if (shake) ctx.translate((Math.random()-0.5)*shake, (Math.random()-0.5)*shake);
+
+  // bg / road / grass
+  box(0,0,160,120,P.bg);
+  box(70,0,20,120,P.road);
+  ctx.fillStyle = P.grass;
+  for (let i=0;i<160;i+=20) for (let j=0;j<120;j+=20) if ((i^j)%40===0) ctx.fillRect(i+4,j+4,2,2);
+
+  if (mode === 'title') {
+    drawTitle();
+    ctx.restore();
+    return;
+  }
+
+  // things
+  for (let o of things) {
+    if (o.k === 'house') {
+      box(o.x, o.y, o.w, o.h, P.wood);
+      box(o.x+4, o.y+4, o.w-8, o.h-8, '#b45309');
+      box(o.x+20, o.y+18, 8, 10, P.dark); // door
+      ctx.fillStyle = '#fbbf24';
+      ctx.fillRect(o.x+6, o.y+8, 6, 6);
+      ctx.fillRect(o.x+34, o.y+8, 6, 6);
+    } else if (o.k === 'store') {
+      box(o.x, o.y, o.w, o.h, '#fca5a5');
+      box(o.x+4, o.y+4, o.w-8, o.h-8, '#f87171');
+      box(o.x+20, o.y+18, 8, 10, P.dark);
+      box(o.x+10, o.y+6, 28, 6, P.pink);
+      box(o.x+6, o.y+18, 6, 6, P.white);
+      box(o.x+34, o.y+18, 6, 6, P.white);
+    } else if (o.k === 'pond') {
+      box(o.x, o.y, o.w, o.h, P.water);
+      if (frame%60<30) box(o.x+6, o.y+6, 4, 2, '#93c5fd');
+      if (frame%90<20) box(o.x+16, o.y+11, 3, 1, '#93c5fd');
+    } else if (o.k === 'rock') {
+      box(o.x, o.y, o.w, o.h, '#78716c');
+      box(o.x+1, o.y-1, o.w-2, 2, '#a8a29e');
+    } else if (o.k === 'flower') {
+      let b = Math.sin(frame*0.12 + (o.f||0))*1.5;
+      box(o.x, o.y+b, 4, 4, P.pink);
+      box(o.x+1, o.y+1+b, 2, 2, '#fcd34d');
+    } else if (o.k === 'mailbox') {
+      box(o.x, o.y, o.w, o.h, P.wood);
+      box(o.x-1, o.y, o.w+2, 3, '#ef4444');
+    } else if (o.k === 'sign') {
+      box(o.x, o.y, o.w, o.h, P.wood);
+      box(o.x-2, o.y+2, o.w+4, 3, P.white);
+    } else if (o.k === 'mom' || o.k === 'clerk') {
+      let b = Math.sin(o.tx||0)*1;
+      box(o.x, o.y+b, o.w, o.h-2, P.skin);
+      box(o.x, o.y+o.h-2+b, o.w, 2, o.k==='mom'?P.pink:'#60a5fa');
+      box(o.x+2, o.y+2+b, 1, 2, P.dark);
+      box(o.x+5, o.y+2+b, 1, 2, P.dark);
+      ctx.fillStyle = P.dark;
+      ctx.fillRect(o.x+2, o.y+5+b, 4, 1);
+      box(o.x, o.y+b, o.w, 2, P.dark); // hair
+    } else if (o.k === 'squirrel') {
+      box(o.x, o.y, o.w, o.h, '#92400e');
+      box(o.x+o.w-2, o.y-2, 2, 5, '#92400e');
+      box(o.x+1, o.y+1, 1, 1, '#fcd34d');
+    }
+  }
+
+  // dude
+  let db = Math.sin(dude.step * 0.6)*1;
+  box(dude.x, dude.y+db, dude.w, dude.h, P.dark);
+  box(dude.x+2, dude.y+2+db, 2, 2, P.bg);
+  box(dude.x+5, dude.y+2+db, 2, 2, P.bg);
+  box(dude.x+3, dude.y+5+db, 2, 1, P.pink); // tiny smile
+  if (dude.step) {
+    let f = Math.floor(dude.step/6)%2;
+    box(dude.x+1, dude.y+8+db, 2, 2-f, P.dark);
+    box(dude.x+5, dude.y+8+db, 2, 1+f, P.dark);
+  } else {
+    box(dude.x+2, dude.y+8+db, 1, 2, P.dark);
+    box(dude.x+5, dude.y+8+db, 1, 2, P.dark);
+  }
+
+  // held item icon
+  if (held) {
+    box(138, 4, 18, 12, P.dark);
+    box(140, 6, 9, 8, P.egg);
+    box(147, 5, 2, 2, P.white);
+  }
+
+  // particles
+  for (let b of bits) box(b.x, b.y, 1, 1, b.col);
+
+  // chat box
+  if (mode === 'chat' && chat) {
+    box(4, 94, 152, 23, 'rgba(30,30,36,0.92)');
+    ctx.strokeStyle = P.pink;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(4, 94, 152, 23);
+
+    let line = chat.lines[chat.idx];
+    if (chat.pos < line.length && frame%3===0) chat.pos++;
+    let txt = line.substring(0, chat.pos);
+    ctx.fillStyle = P.white;
+    ctx.font = '10px monospace';
+    ctx.fillText(txt, 10, 109);
+    if (chat.pos >= line.length && Math.floor(frame/25)%2) ctx.fillText('▼', 145, 114);
+  }
+
+  // done screen
+  if (mode === 'done') {
+    box(20, 34, 120, 52, 'rgba(30,30,36,0.92)');
+    ctx.strokeStyle = P.pink; ctx.lineWidth=1; ctx.strokeRect(20,34,120,52);
+    ctx.fillStyle = P.pink; ctx.font='12px monospace'; ctx.fillText('YOU DID IT!!', 52, 56);
+    ctx.fillStyle = P.white; ctx.font='10px monospace';
+    ctx.fillText('moms making eggs now', 30, 72);
+    ctx.fillText('time: '+(t/60).toFixed(1)+'s', 58, 86);
+    if (Math.floor(frame/30)%2) ctx.fillText('press SPACE', 52, 98);
+  }
+
+  ctx.restore();
+}
+
+function drawTitle() {
+  let w = Math.sin(frame*0.08)*2;
+  ctx.fillStyle = P.pink; ctx.font='16px monospace'; ctx.fillText('SNACK RUN', 42, 38+w);
+  ctx.fillStyle = P.dark; ctx.font='10px monospace';
+  ctx.fillText('a game by someone who', 24, 60);
+  ctx.fillText('should be asleep rn', 40, 72);
+  if (Math.floor(frame/40)%2) {
+    ctx.fillStyle = P.pink; ctx.fillText('press SPACE to start !!', 22, 100);
+  }
+  // idle lil dude
+  let bx = Math.sin(frame*0.15)*2;
+  box(76, 82, 8, 8, P.dark);
+  box(78, 84, 2, 2, P.bg); box(81, 84, 2, 2, P.bg);
+  box(79, 87, 2, 1, P.pink);
+  box(77, 90+bx, 1, 2, P.dark); box(82, 90-bx, 1, 2, P.dark);
+}
+
+function loop() { tick(); draw(); requestAnimationFrame(loop); }
+loop();
+</script>
 </body>
-</html>
+</html
